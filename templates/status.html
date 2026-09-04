@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sanitized CyberSlooth autonomous run status.">
+  <title>Run Status — CyberSlooth</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23171916'/%3E%3Cpath d='M13 13h38v38H13z' fill='none' stroke='%2394a978' stroke-width='3'/%3E%3Ctext x='32' y='38' text-anchor='middle' fill='%23c0d29f' font-family='monospace' font-size='18' font-weight='700'%3ECS%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#status-content">Skip to run status</a>
+  <header class="archive-header">
+    <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
+    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.0A / Live</strong></nav>
+  </header>
+
+  <main id="status-content">
+    <section class="status-page">
+      <p class="kicker">Read-only system status</p>
+      <h1>Autonomous Run Status</h1>
+      <p>Stage 1.0A executes one bounded expedition after an authorized manual trigger. It is not scheduled.</p>
+      {% if run %}
+      <div class="run-status-card">
+        <div class="run-status-heading"><span>{{ run.public_run_id }}</span><strong class="run-state {{ run.status }}">{{ run.status|upper }}</strong></div>
+        <dl class="today-metadata">
+          <div><dt>Started</dt><dd>{{ run.started_at.strftime("%Y-%m-%d %H:%M UTC") }}</dd></div>
+          <div><dt>Completed</dt><dd>{{ run.completed_at.strftime("%Y-%m-%d %H:%M UTC") if run.completed_at else "IN PROGRESS" }}</dd></div>
+          <div><dt>Pages retrieved</dt><dd>{{ run.pages_retrieved }}</dd></div>
+          <div><dt>Model calls</dt><dd>{{ run.model_calls_used }} / 6 MAX</dd></div>
+          <div><dt>Discovery published</dt><dd>{{ "YES" if run.daily_discovery_public_id else "NO" }}</dd></div>
+          <div><dt>Failure stage</dt><dd>{{ run.failure_stage|upper if run.failure_stage else "NONE" }}</dd></div>
+        </dl>
+        <div class="status-links">
+          {% if run.research_public_id %}<a class="open-record" href="{{ url_for('archive_detail', public_id=run.research_public_id) }}">Open Expedition Record <span aria-hidden="true">→</span></a>{% endif %}
+          {% if run.daily_discovery_public_id %}<a class="open-record" href="{{ url_for('today') }}">Open Daily Discovery <span aria-hidden="true">→</span></a>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="public-empty compact-empty"><span aria-hidden="true">◇</span><h2>No autonomous run has been recorded yet.</h2><p>The manual research and archive tools remain available.</p></div>
+      {% endif %}
+    </section>
+  </main>
+
+  <footer><span>CyberSlooth</span><span>Sanitized status · No secrets or prompts</span><a href="{{ url_for('index') }}">Return home ↑</a></footer>
+</body>
+</html>

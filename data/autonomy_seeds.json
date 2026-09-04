@@ -1,0 +1,37 @@
+[
+  {
+    "id": "seed-001",
+    "url": "https://www.loc.gov/collections/",
+    "label": "Library of Congress Collections",
+    "category": "public archive directory",
+    "enabled": true
+  },
+  {
+    "id": "seed-002",
+    "url": "https://archive.org/details/texts",
+    "label": "Internet Archive Texts",
+    "category": "public digital library",
+    "enabled": true
+  },
+  {
+    "id": "seed-003",
+    "url": "https://www.si.edu/explore",
+    "label": "Smithsonian Explore",
+    "category": "public informational hub",
+    "enabled": true
+  },
+  {
+    "id": "seed-004",
+    "url": "https://www.gutenberg.org/",
+    "label": "Project Gutenberg",
+    "category": "public-domain library",
+    "enabled": true
+  },
+  {
+    "id": "seed-005",
+    "url": "https://www.nasa.gov/history/",
+    "label": "NASA History",
+    "category": "public history hub",
+    "enabled": true
+  }
+]

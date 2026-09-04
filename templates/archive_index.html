@@ -13,7 +13,7 @@
   <a class="skip-link" href="#archive-list">Skip to archive records</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('index') }}">New Expedition</a><strong>Stage 0.6 / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('index') }}">New Expedition</a><strong>Stage 1.0A / Live</strong></nav>
   </header>
 
   <main>
@@ -36,7 +36,7 @@
       <div id="daily-results" {% if not daily_candidate %}hidden{% endif %}>
         <article class="candidate-winner" id="candidate-winner">
           {% if daily_candidate %}
-          <div><span class="candidate-label">Daily Discovery Candidate</span><span>Rank 01 · {{ daily_candidate.daily_candidate_score }}/25</span></div>
+          <div><span class="candidate-label">{{ "Daily Discovery" if daily_candidate.public_id == published_public_id else "Daily Discovery Candidate" }}</span><span>Rank 01 · {{ daily_candidate.daily_candidate_score }}/25</span></div>
           <h3><a href="{{ url_for('archive_detail', public_id=daily_candidate.public_id) }}">{{ daily_candidate.title }}</a></h3>
           <p class="candidate-id">{{ daily_candidate.public_id }} · {{ daily_candidate.archive_decision|upper }} · {{ daily_candidate.confidence|upper }} CONFIDENCE</p>
           <p>Selected by the most recent completed bounded evaluation. Run the evaluation again to view fresh component scores and its concise model reason.</p>
@@ -70,6 +70,7 @@
                 <div class="card-meta">
                   <time datetime="{{ record.created_at.isoformat() }}">{{ record.created_at.strftime("%B %d, %Y") }}</time>
                   <span>{{ record.public_id }}</span>
+                  {% if record.public_id == published_public_id %}<strong>Daily Discovery</strong>{% elif record.daily_candidate_selected %}<strong>Daily Candidate</strong>{% endif %}
                 </div>
                 <h2>{{ record.title }}</h2>
                 <p class="domain">{{ record.source_domain }}</p>

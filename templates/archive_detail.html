@@ -12,7 +12,7 @@
   <a class="skip-link" href="#record">Skip to research record</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 0.6 / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.0A / Live</strong></nav>
   </header>
 
   <main class="record-page" id="record">
@@ -21,7 +21,7 @@
       <div class="record-id">{{ record.public_id }}</div>
       <h1>{{ record.title }}</h1>
       <p>{{ record.summary }}</p>
-      <div class="record-badges">{% if record.daily_candidate_selected %}<span class="daily-badge">DAILY CANDIDATE</span>{% endif %}<span>{{ record.archive_decision|upper }}</span><span>{{ record.confidence|upper }} CONFIDENCE</span><span>{{ "ONE-HOP EXPLORED" if record.exploration_performed else "ANALYSIS ONLY" }}</span></div>
+      <div class="record-badges">{% if record.daily_discovery_published %}<span class="discovery-badge">DAILY DISCOVERY</span>{% endif %}{% if record.daily_candidate_selected %}<span class="daily-badge">DAILY CANDIDATE</span>{% endif %}<span>{{ record.archive_decision|upper }}</span><span>{{ record.confidence|upper }} CONFIDENCE</span><span>{{ "ONE-HOP EXPLORED" if record.exploration_performed else "ANALYSIS ONLY" }}</span></div>
     </div>
 
     <section class="record-section" aria-labelledby="original-title">

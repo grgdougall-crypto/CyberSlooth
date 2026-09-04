@@ -4,9 +4,9 @@ CyberSlooth is a planned public experiment in internet archaeology: autonomous r
 
 ## Prototype status
 
-Stage 0.6 preserves the complete bounded research and archive pipeline, then adds an explicit comparison of recent archived discoveries. A user can evaluate up to the ten newest records and mark exactly one preferred daily candidate using validated component scores and deterministic server-side ranking.
+Stage 1.0A adds one complete autonomous expedition after a manual authorized trigger. The orchestrator rotates through an application-owned seed pool, reuses the existing bounded research services, archives the result, evaluates recent discoveries, publishes one selected archive record, records sanitized run metadata, and stops.
 
-Archival and candidate evaluation are manual. Stage 0.6 does **not** schedule runs, choose seeds, publish automatically, run background jobs, crawl recursively, or perform multi-hop research.
+Stage 1.0A is autonomous only after it is manually triggered through the CLI or protected HTTP endpoint. It is **not scheduled** and does not add cron, background workers, queues, recursive crawling, multi-hop research, or repeated expedition loops.
 
 ## Run locally
 
@@ -21,7 +21,7 @@ Then open `http://localhost:8000`.
 
 ## Research and archive pipeline
 
-Safe retrieval → structured AI analysis → bounded one-hop exploration → synthesis → persistent archive → bounded cross-run scoring → manually selected daily candidate.
+Curated seed rotation → safe retrieval → structured AI analysis → bounded one-hop exploration → synthesis → automatic archive → recent-discovery scoring → daily discovery publication → **STOP**.
 
 `POST /api/ingest` accepts `{ "url": "https://example.com/page" }` and returns a normalized evidence object with immutable source metadata, extracted page content, and unvisited candidate links. `POST /api/analyze` accepts exactly that normalized object—not a raw prompt—and returns a compact analysis containing grounded observations, explicit uncertainties, optional candidate follow-ups, an archive recommendation, and confidence.
 
@@ -61,7 +61,7 @@ Local development defaults to SQLite at `data/cyberslooth.db` when `DATABASE_URL
 
 Production on Railway requires a Postgres service and its `DATABASE_URL` variable. Common Railway `postgres://` and `postgresql://` URLs are normalized to SQLAlchemy's Psycopg driver form. CyberSlooth deliberately refuses to fall back to ephemeral SQLite when a Railway environment is detected without `DATABASE_URL`.
 
-Stage 0.6 creates the table for a fresh installation and applies a bounded additive startup upgrade for the four nullable candidate-metadata columns on an existing Stage 0.5 database. Formal versioned migrations are not yet included.
+Stage 1.0A creates the new `autonomous_runs` and `daily_discoveries` tables at startup while retaining the bounded additive Stage 0.6 upgrade for older `research_runs` tables. Formal versioned migrations are not yet included.
 
 ## Railway readiness
 
@@ -72,13 +72,60 @@ Railway must provide:
 - `OPENAI_API_KEY` — required for analysis
 - `OPENAI_MODEL` — optional; defaults to `gpt-5.4-mini`
 - `DATABASE_URL` — required for persistent Railway Postgres storage
+- `AUTONOMY_RUN_TOKEN` — required for the protected HTTP trigger; use a long, random secret
 
 No Railway variables, Postgres services, or other resources are created by this project.
 
 Candidate selection uses at most one model call per manual request, considers at most ten records, uses no tools, and relies on the OpenAI client's zero-retry configuration. Stored page-derived text is explicitly treated as untrusted data in the scoring prompt. Raw excerpts, URLs, provider responses, secrets, internal database IDs, and hidden prompts are excluded from the scoring payload and selection metadata.
 
-## Likely future stages
+## Stage 1.0A autonomous orchestrator
 
-- Stage 1.0 — scheduled autonomous expedition
+`run_autonomous_expedition()` is the single orchestration path used by both manual triggers. It calls the existing Python services directly and never makes HTTP requests back into CyberSlooth's own API.
 
-Scheduling and autonomous publishing are not implemented here.
+Each successful run:
+
+1. Creates an `AutonomousRun` in `running` state and acquires the database-backed active-run guard.
+2. Selects one enabled seed deterministically using least-recently-used order with stable seed-ID tie-breaking.
+3. Retrieves and analyzes exactly one starting page using the existing safety and prompt-injection controls.
+4. Uses the existing one-hop exploration when the validated analysis contains candidate follow-ups; at most two pages may be selected.
+5. Validates and archives the completed research structure.
+6. Scores only the ten most recent archive records using the existing Stage 0.6 one-call evaluator.
+7. Publishes one `DailyDiscovery` that references the selected archived record.
+8. Completes the run record and stops without starting another expedition.
+
+The starter seed pool is stored in `data/autonomy_seeds.json`. It contains five benign public archive or informational starting points and can be curated without changing orchestration code. Seed selection uses no model call and arbitrary trigger-supplied URLs are not accepted.
+
+An autonomous run may use at most six model calls: one starting analysis, up to four existing exploration calls, and one cross-run scoring call. Retrieval is limited to one starting page plus at most two follow-up pages. Existing clients use zero automatic retries.
+
+Failures are recorded with a sanitized stage and message. Retrieval or analysis failure creates no archive or publication. Archive failure does not publish. Scoring failure preserves the newly archived record and the prior publication. Publication failure preserves the archive, ranking metadata, and prior publication. A unique active-run guard blocks concurrent execution, and a completed run blocks another normal run during the same UTC date. Failed runs may be manually retried.
+
+## Manual invocation
+
+CLI execution runs directly in the application environment and does not require the HTTP trigger token:
+
+```powershell
+python autonomous_run.py
+```
+
+The internal HTTP trigger requires `AUTONOMY_RUN_TOKEN` and an exact bearer token. It accepts no run configuration or starting URL:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:AUTONOMY_RUN_TOKEN" }
+Invoke-RestMethod -Method Post -Uri "https://YOUR-SERVICE/api/autonomous-run" -Headers $headers
+```
+
+The token is never included in frontend JavaScript, API responses, public status, or application logs.
+
+## Public daily discovery and status
+
+- `/today` displays the current published daily discovery, selection reason and score, archive metadata, exploration state, full-record link, and explicit run boundaries. It provides an archive-linked empty state before the first publication.
+- `/status` displays only sanitized metadata for the latest autonomous run: public run ID, timestamps, status, page and model-call counts, publication state, safe failure stage, and applicable archive links.
+- `/archive` and archive detail pages distinguish a published `DAILY DISCOVERY` from an evaluated `DAILY CANDIDATE`.
+
+`AutonomousRun` stores the public run ID, timestamps, status, selected seed reference, archive/publication references, bounded counters, and safe failure metadata. `DailyDiscovery` stores one unique publication per UTC date and references the full `ResearchRun` rather than duplicating it.
+
+## Next planned stage
+
+- Stage 1.0B — schedule the already-tested orchestrator once per day.
+
+No scheduling, cron configuration, or Railway scheduler is included in Stage 1.0A.

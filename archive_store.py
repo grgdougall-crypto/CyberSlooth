@@ -1,15 +1,16 @@
-"""Small SQLAlchemy persistence layer for CyberSlooth Stage 0.6."""
+"""Small SQLAlchemy persistence layer for CyberSlooth Stage 1.0A."""
 
 from __future__ import annotations
 
 import os
 import secrets
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, create_engine, inspect, select, text, update
+from sqlalchemy import JSON, Boolean, Date, DateTime, Index, Integer, String, create_engine, func, inspect, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -53,6 +54,47 @@ class ResearchRun(Base):
     daily_candidate_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AutonomousRun(Base):
+    __tablename__ = "autonomous_runs"
+    __table_args__ = (
+        Index("idx_autonomous_runs_status_started", "status", "started_at"),
+        Index("uq_autonomous_runs_active_guard", "active_guard", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_run_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    seed_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seed_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    research_public_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    daily_discovery_public_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pages_retrieved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    model_calls_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    failure_message_safe: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    active_guard: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+
+class DailyDiscovery(Base):
+    __tablename__ = "daily_discoveries"
+    __table_args__ = (Index("idx_daily_discoveries_published", "published_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    publication_date: Mapped[date] = mapped_column(Date, unique=True, nullable=False)
+    research_run_public_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_autonomous_run_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    selection_reason: Mapped[str] = mapped_column(String(400), nullable=False)
+    selected_score: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AutonomousRunConflict(RuntimeError):
+    """A completed daily run or active run prevents a new autonomous run."""
+
+
 _engine = None
 _session_factory: sessionmaker[Session] | None = None
 
@@ -78,7 +120,7 @@ def configured_database_url() -> str:
 
 
 def configure_database(url: str | None = None) -> str:
-    """Configure the engine and apply the additive Stage 0.6 schema upgrade."""
+    """Configure the engine and create/upgrade the bounded prototype schema."""
 
     global _engine, _session_factory
     selected_url = url or configured_database_url()
@@ -241,6 +283,158 @@ def list_current_daily_ranking() -> list[ResearchRun]:
 def get_research_run(public_id: str) -> ResearchRun | None:
     with database_session() as session:
         return session.scalar(select(ResearchRun).where(ResearchRun.public_id == public_id))
+
+
+def _new_autonomous_public_id(now: datetime) -> str:
+    return f"AR-{now:%Y%m%d}-{secrets.token_hex(3).upper()}"
+
+
+def create_autonomous_run(now: datetime | None = None) -> AutonomousRun:
+    """Create the single active run, rejecting overlap and a completed UTC day."""
+
+    started_at = now or datetime.now(timezone.utc)
+    day_start = datetime.combine(started_at.date(), time.min, tzinfo=timezone.utc)
+    day_end = day_start + timedelta(days=1)
+    try:
+        with database_session() as session:
+            if session.scalar(select(AutonomousRun.id).where(AutonomousRun.active_guard == "active")) is not None:
+                raise AutonomousRunConflict("An autonomous expedition is already running.")
+            if session.scalar(
+                select(AutonomousRun.id)
+                .where(AutonomousRun.status == "completed")
+                .where(AutonomousRun.completed_at >= day_start)
+                .where(AutonomousRun.completed_at < day_end)
+                .limit(1)
+            ) is not None:
+                raise AutonomousRunConflict("A completed autonomous expedition already exists for this UTC date.")
+            public_run_id = _new_autonomous_public_id(started_at)
+            for _ in range(5):
+                if session.scalar(select(AutonomousRun.id).where(AutonomousRun.public_run_id == public_run_id)) is None:
+                    break
+                public_run_id = _new_autonomous_public_id(started_at)
+            else:
+                raise RuntimeError("Could not generate a unique autonomous run identifier.")
+            run = AutonomousRun(
+                public_run_id=public_run_id,
+                started_at=started_at,
+                completed_at=None,
+                status="running",
+                pages_retrieved=0,
+                model_calls_used=0,
+                created_at=started_at,
+                active_guard="active",
+            )
+            session.add(run)
+            session.flush()
+            return run
+    except IntegrityError as exc:
+        raise AutonomousRunConflict("An autonomous expedition is already running.") from exc
+
+
+def set_autonomous_run_seed(public_run_id: str, seed_id: str, seed_url: str) -> None:
+    with database_session() as session:
+        run = session.scalar(select(AutonomousRun).where(AutonomousRun.public_run_id == public_run_id))
+        if run is None or run.status != "running":
+            raise RuntimeError("The autonomous run is not active.")
+        run.seed_id = seed_id
+        run.seed_url = seed_url
+
+
+def autonomous_seed_last_used(seed_ids: list[str]) -> dict[str, datetime]:
+    if not seed_ids:
+        return {}
+    with database_session() as session:
+        rows = session.execute(
+            select(AutonomousRun.seed_id, func.max(AutonomousRun.started_at))
+            .where(AutonomousRun.seed_id.in_(seed_ids))
+            .group_by(AutonomousRun.seed_id)
+        ).all()
+        return {seed_id: used_at for seed_id, used_at in rows if seed_id is not None}
+
+
+def complete_autonomous_run(
+    public_run_id: str, *, research_public_id: str, daily_discovery_public_id: str,
+    pages_retrieved: int, model_calls_used: int, completed_at: datetime | None = None,
+) -> AutonomousRun:
+    finished = completed_at or datetime.now(timezone.utc)
+    with database_session() as session:
+        run = session.scalar(select(AutonomousRun).where(AutonomousRun.public_run_id == public_run_id))
+        if run is None or run.status != "running":
+            raise RuntimeError("The autonomous run is not active.")
+        run.status = "completed"
+        run.completed_at = finished
+        run.research_public_id = research_public_id
+        run.daily_discovery_public_id = daily_discovery_public_id
+        run.pages_retrieved = pages_retrieved
+        run.model_calls_used = model_calls_used
+        run.active_guard = None
+        session.flush()
+        return run
+
+
+def fail_autonomous_run(
+    public_run_id: str, *, failure_stage: str, failure_message_safe: str,
+    pages_retrieved: int, model_calls_used: int, research_public_id: str | None = None,
+    completed_at: datetime | None = None,
+) -> AutonomousRun:
+    finished = completed_at or datetime.now(timezone.utc)
+    with database_session() as session:
+        run = session.scalar(select(AutonomousRun).where(AutonomousRun.public_run_id == public_run_id))
+        if run is None:
+            raise RuntimeError("The autonomous run does not exist.")
+        run.status = "failed"
+        run.completed_at = finished
+        run.research_public_id = research_public_id
+        run.pages_retrieved = pages_retrieved
+        run.model_calls_used = model_calls_used
+        run.failure_stage = failure_stage[:32]
+        run.failure_message_safe = failure_message_safe[:300]
+        run.active_guard = None
+        session.flush()
+        return run
+
+
+def get_autonomous_run(public_run_id: str) -> AutonomousRun | None:
+    with database_session() as session:
+        return session.scalar(select(AutonomousRun).where(AutonomousRun.public_run_id == public_run_id))
+
+
+def get_latest_autonomous_run() -> AutonomousRun | None:
+    with database_session() as session:
+        return session.scalar(select(AutonomousRun).order_by(AutonomousRun.started_at.desc(), AutonomousRun.id.desc()).limit(1))
+
+
+def publish_daily_discovery(
+    *, research_public_id: str, source_autonomous_run_id: str, selection_reason: str,
+    selected_score: int, published_at: datetime | None = None,
+) -> DailyDiscovery:
+    now = published_at or datetime.now(timezone.utc)
+    try:
+        with database_session() as session:
+            if session.scalar(select(ResearchRun.id).where(ResearchRun.public_id == research_public_id)) is None:
+                raise RuntimeError("The selected research record does not exist.")
+            discovery = DailyDiscovery(
+                publication_date=now.date(),
+                research_run_public_id=research_public_id,
+                published_at=now,
+                source_autonomous_run_id=source_autonomous_run_id,
+                selection_reason=selection_reason[:400],
+                selected_score=selected_score,
+            )
+            session.add(discovery)
+            session.flush()
+            return discovery
+    except IntegrityError as exc:
+        raise AutonomousRunConflict("A daily discovery already exists for this UTC date.") from exc
+
+
+def get_current_daily_discovery() -> DailyDiscovery | None:
+    with database_session() as session:
+        return session.scalar(
+            select(DailyDiscovery)
+            .order_by(DailyDiscovery.publication_date.desc(), DailyDiscovery.published_at.desc())
+            .limit(1)
+        )
 
 
 configure_database()

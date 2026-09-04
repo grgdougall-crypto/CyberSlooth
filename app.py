@@ -1,4 +1,4 @@
-"""CyberSlooth Stage 0.6: bounded research with manual cross-run discovery scoring."""
+"""CyberSlooth Stage 1.0A: one manually triggered bounded autonomous expedition."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import socket
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -23,7 +24,9 @@ from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 from archive_store import (
     create_research_run,
+    get_current_daily_discovery,
     get_current_daily_candidate,
+    get_latest_autonomous_run,
     get_research_run,
     list_current_daily_ranking,
     list_recent_research_runs,
@@ -981,10 +984,12 @@ def synthesize_exploration(
     return _validate_synthesis(output, successful, allowed_next_leads)
 
 
-def explore_evidence(evidence: dict[str, Any], analysis: dict[str, Any]) -> tuple[dict[str, Any], int]:
+def explore_evidence(
+    evidence: dict[str, Any], analysis: dict[str, Any], budget: ModelCallBudget | None = None,
+) -> tuple[dict[str, Any], int]:
     """Run the one-hop expedition sequentially and stop after the selected links."""
 
-    budget = ModelCallBudget()
+    budget = budget or ModelCallBudget()
     selected = select_follow_up_links(evidence, analysis, budget)
     expedition_items: list[dict[str, Any]] = []
     successful: list[dict[str, Any]] = []
@@ -1497,6 +1502,24 @@ def archive_record_view(record: Any) -> dict[str, Any]:
     }
 
 
+def daily_discovery_view(discovery: Any) -> dict[str, Any] | None:
+    """Join publication metadata to its archived record for public display."""
+
+    if discovery is None:
+        return None
+    record = get_research_run(discovery.research_run_public_id)
+    if record is None:
+        return None
+    view = archive_record_view(record)
+    return {
+        "publication_date": discovery.publication_date,
+        "published_at": discovery.published_at,
+        "selection_reason": discovery.selection_reason,
+        "selected_score": discovery.selected_score,
+        "record": view,
+    }
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -1523,11 +1546,13 @@ def data_file(filename: str):
 def archive_index():
     records = [archive_record_view(record) for record in list_research_runs()]
     current = get_current_daily_candidate()
+    published = get_current_daily_discovery()
     daily_candidate = archive_record_view(current) if current is not None else None
     daily_ranking = [archive_record_view(record) for record in list_current_daily_ranking()]
     return render_template(
         "archive_index.html", records=records,
         daily_candidate=daily_candidate, daily_ranking=daily_ranking,
+        published_public_id=published.research_run_public_id if published else None,
     )
 
 
@@ -1538,7 +1563,34 @@ def archive_detail(public_id: str):
     record = get_research_run(public_id)
     if record is None:
         abort(404)
-    return render_template("archive_detail.html", record=archive_record_view(record))
+    published = get_current_daily_discovery()
+    view = archive_record_view(record)
+    view["daily_discovery_published"] = bool(published and published.research_run_public_id == public_id)
+    return render_template("archive_detail.html", record=view)
+
+
+@app.get("/today")
+def today():
+    return render_template("today.html", discovery=daily_discovery_view(get_current_daily_discovery()))
+
+
+@app.get("/status")
+def status():
+    run = get_latest_autonomous_run()
+    safe_run = None
+    if run is not None:
+        safe_run = {
+            "public_run_id": run.public_run_id,
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+            "status": run.status,
+            "pages_retrieved": run.pages_retrieved,
+            "model_calls_used": run.model_calls_used,
+            "research_public_id": run.research_public_id,
+            "daily_discovery_public_id": run.daily_discovery_public_id,
+            "failure_stage": run.failure_stage,
+        }
+    return render_template("status.html", run=safe_run)
 
 
 @app.post("/api/ingest")
@@ -1651,6 +1703,36 @@ def select_daily_candidate():
         "selected": winner,
         "ranked": public_ranking,
     })
+
+
+@app.post("/api/autonomous-run")
+def trigger_autonomous_run():
+    configured_token = os.environ.get("AUTONOMY_RUN_TOKEN", "")
+    if not configured_token:
+        return jsonify({
+            "ok": False,
+            "error": {"code": "trigger_unavailable", "message": "The autonomous HTTP trigger is not configured."},
+        }), 503
+    authorization = request.headers.get("Authorization", "")
+    expected = f"Bearer {configured_token}"
+    if not secrets.compare_digest(authorization, expected):
+        return jsonify({
+            "ok": False,
+            "error": {"code": "unauthorized", "message": "A valid bearer token is required."},
+        }), 401
+    if request.content_length not in (None, 0):
+        if not request.is_json or request.get_json(silent=True) != {}:
+            return jsonify({
+                "ok": False,
+                "error": {"code": "invalid_request", "message": "This trigger does not accept run configuration."},
+            }), 400
+    from autonomy import AutonomyError, run_autonomous_expedition
+
+    try:
+        result = run_autonomous_expedition(logger=app.logger)
+    except AutonomyError as exc:
+        return jsonify({"ok": False, "error": {"code": exc.code, "message": exc.message}}), exc.status
+    return jsonify({"ok": True, "run": result})
 
 
 @app.errorhandler(IngestError)

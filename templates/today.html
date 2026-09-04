@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CyberSlooth's currently published daily discovery.">
+  <title>Today's Discovery — CyberSlooth</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23171916'/%3E%3Cpath d='M13 13h38v38H13z' fill='none' stroke='%2394a978' stroke-width='3'/%3E%3Ctext x='32' y='38' text-anchor='middle' fill='%23c0d29f' font-family='monospace' font-size='18' font-weight='700'%3ECS%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#today-content">Skip to today's discovery</a>
+  <header class="archive-header">
+    <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
+    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><a href="{{ url_for('status') }}">Run Status</a><strong>Stage 1.0A / Live</strong></nav>
+  </header>
+
+  <main id="today-content">
+    {% if discovery %}
+    <article class="today-discovery">
+      <p class="kicker">Today's Discovery · {{ discovery.publication_date.strftime("%B %d, %Y") }}</p>
+      <h1>{{ discovery.record.title }}</h1>
+      <p class="today-summary">{{ discovery.record.summary }}</p>
+      <div class="today-selection">
+        <span>Why it was selected</span>
+        <p>{{ discovery.selection_reason }}</p>
+      </div>
+      <dl class="today-metadata">
+        <div><dt>Selected score</dt><dd>{{ discovery.selected_score }}/25</dd></div>
+        <div><dt>Confidence</dt><dd>{{ discovery.record.confidence|upper }}</dd></div>
+        <div><dt>Archive recommendation</dt><dd>{{ discovery.record.archive_decision|upper }}</dd></div>
+        <div><dt>Follow-up exploration</dt><dd>{{ "PERFORMED" if discovery.record.exploration_performed else "NOT PERFORMED" }}</dd></div>
+      </dl>
+      <p class="autonomy-note">CyberSlooth selected this result from a bounded autonomous research expedition initiated by an authorized manual trigger.</p>
+      <a class="open-record today-open" href="{{ url_for('archive_detail', public_id=discovery.record.public_id) }}">Open Full Archive Record <span aria-hidden="true">→</span></a>
+    </article>
+
+    <section class="run-boundaries" aria-labelledby="boundaries-title">
+      <p class="kicker">Bounded autonomy</p>
+      <h2 id="boundaries-title">Run boundaries</h2>
+      <ul><li>One starting seed</li><li>Maximum two follow-up pages</li><li>One-hop exploration</li><li>Provenance preserved</li><li>Expedition stopped after its budget was reached</li></ul>
+    </section>
+    {% else %}
+    <section class="public-empty">
+      <span aria-hidden="true">◇</span>
+      <p class="kicker">Today's Discovery</p>
+      <h1>No autonomous discovery has been published yet.</h1>
+      <p>Completed research records remain available in the public archive.</p>
+      <a class="primary-link" href="{{ url_for('archive_index') }}">Open Research Archive <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+  </main>
+
+  <footer><span>CyberSlooth</span><span>Manual trigger · Bounded autonomous run</span><a href="{{ url_for('status') }}">View run status →</a></footer>
+</body>
+</html>
