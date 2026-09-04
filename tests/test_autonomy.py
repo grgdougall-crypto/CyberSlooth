@@ -82,6 +82,8 @@ class AutonomyTests(unittest.TestCase):
             "id": "seed-test", "url": "https://example.com/", "label": "Test seed",
             "category": "test directory", "enabled": True,
         }
+        self.seed_a = {**self.seed, "id": "seed-a", "url": "https://example.com/a"}
+        self.seed_b = {**self.seed, "id": "seed-b", "url": "https://example.com/b"}
 
     def tearDown(self):
         archive_store.configure_database("sqlite:///" + archive_store.LOCAL_DATABASE_PATH.as_posix())
@@ -144,6 +146,29 @@ class AutonomyTests(unittest.TestCase):
                 stack.enter_context(patch.object(autonomy, "publish_daily_discovery", side_effect=publication_side_effect))
             return autonomy.run_autonomous_expedition()
 
+    def run_seed_scenario(self, fetch_outcomes, *, seeds=None):
+        self.archive_record()
+        selected_seeds = seeds or [self.seed_a, self.seed_b]
+
+        def fake_analysis(_evidence, budget):
+            budget.consume()
+            return valid_analysis(candidates=[])
+
+        with patch.object(autonomy, "load_seed_pool", return_value=selected_seeds), patch.object(
+            autonomy.cyberslooth, "fetch_public_page", side_effect=fetch_outcomes,
+        ) as fetch_mock, patch.object(
+            autonomy.cyberslooth, "analyze_evidence", side_effect=fake_analysis,
+        ) as analysis_mock, patch.object(
+            autonomy.cyberslooth, "score_daily_candidates", side_effect=self.fake_scores,
+        ) as score_mock:
+            try:
+                result = autonomy.run_autonomous_expedition()
+                error = None
+            except autonomy.AutonomyError as exc:
+                result = None
+                error = exc
+        return result, error, fetch_mock, analysis_mock, score_mock
+
     def test_seed_pool_loads_enabled_seeds(self):
         seeds = autonomy.load_seed_pool()
         self.assertGreaterEqual(len([seed for seed in seeds if seed["enabled"]]), 5)
@@ -190,6 +215,117 @@ class AutonomyTests(unittest.TestCase):
         run = archive_store.get_latest_autonomous_run()
         self.assertEqual((run.status, run.failure_stage), ("failed", "retrieval"))
         self.assertEqual(archive_store.list_research_runs(), [])
+
+    def test_primary_seed_success_uses_one_retrieval_attempt(self):
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [fetched(self.seed_a["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(fetch_mock.call_args_list, [unittest.mock.call(self.seed_a["url"])])
+        run = archive_store.get_latest_autonomous_run()
+        self.assertEqual((run.initial_seed_id, run.seed_id, run.seed_attempts), ("seed-a", "seed-a", 1))
+
+    def test_http_403_tries_one_alternate_approved_seed(self):
+        denied = cyberslooth.IngestError("source_status", "The source returned HTTP 403.", 422)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [denied, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            fetch_mock.call_args_list,
+            [unittest.mock.call(self.seed_a["url"]), unittest.mock.call(self.seed_b["url"])],
+        )
+        run = archive_store.get_latest_autonomous_run()
+        self.assertEqual((run.initial_seed_id, run.seed_id, run.seed_attempts), ("seed-a", "seed-b", 2))
+
+    def test_http_404_tries_one_alternate_approved_seed(self):
+        missing = cyberslooth.IngestError("source_status", "The source returned HTTP 404.", 422)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [missing, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(fetch_mock.call_count, 2)
+        self.assertEqual(result["status"], "completed")
+
+    def test_timeout_tries_one_alternate_approved_seed(self):
+        timeout = cyberslooth.IngestError("source_timeout", "The source timed out.", 504)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [timeout, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(fetch_mock.call_count, 2)
+        self.assertEqual(result["status"], "completed")
+
+    def test_dns_failure_tries_one_alternate_approved_seed(self):
+        dns_failure = cyberslooth.IngestError("dns_failed", "The source could not be resolved.", 422)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [dns_failure, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(fetch_mock.call_count, 2)
+        self.assertEqual(result["status"], "completed")
+
+    def test_alternate_success_continues_through_publication(self):
+        denied = cyberslooth.IngestError("source_status", "The source returned HTTP 403.", 422)
+        result, error, _fetch, analysis_mock, score_mock = self.run_seed_scenario(
+            [denied, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(analysis_mock.call_count, 1)
+        self.assertEqual(score_mock.call_count, 1)
+        self.assertIsNotNone(result["research_public_id"])
+        self.assertIsNotNone(archive_store.get_current_daily_discovery())
+
+    def test_both_seed_failures_stop_without_publication(self):
+        errors = [
+            cyberslooth.IngestError("source_status", "The source returned HTTP 403.", 422),
+            cyberslooth.IngestError("source_timeout", "The source timed out.", 504),
+        ]
+        result, error, fetch_mock, analysis_mock, score_mock = self.run_seed_scenario(errors)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertEqual(fetch_mock.call_count, 2)
+        analysis_mock.assert_not_called()
+        score_mock.assert_not_called()
+        run = archive_store.get_latest_autonomous_run()
+        self.assertEqual((run.status, run.failure_stage, run.seed_attempts), ("failed", "retrieval", 2))
+        self.assertIsNone(archive_store.get_current_daily_discovery())
+
+    def test_alternate_never_retries_the_same_url(self):
+        duplicate_url_seed = {**self.seed_b, "url": self.seed_a["url"]}
+        seed_c = {**self.seed, "id": "seed-c", "url": "https://example.com/c"}
+        denied = cyberslooth.IngestError("source_status", "The source returned HTTP 403.", 422)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [denied, fetched(seed_c["url"])], seeds=[self.seed_a, duplicate_url_seed, seed_c],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            fetch_mock.call_args_list,
+            [unittest.mock.call(self.seed_a["url"]), unittest.mock.call(seed_c["url"])],
+        )
+
+    def test_starting_seed_retrieval_never_exceeds_two_attempts(self):
+        seed_c = {**self.seed, "id": "seed-c", "url": "https://example.com/c"}
+        unavailable = cyberslooth.IngestError("source_unavailable", "The source was unavailable.", 502)
+        result, error, fetch_mock, _analysis, _score = self.run_seed_scenario(
+            [unavailable, unavailable, fetched(seed_c["url"])], seeds=[self.seed_a, self.seed_b, seed_c],
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertEqual(fetch_mock.call_count, 2)
+
+    def test_alternate_retrieval_introduces_no_model_calls(self):
+        missing = cyberslooth.IngestError("source_status", "The source returned HTTP 404.", 422)
+        result, error, _fetch, analysis_mock, score_mock = self.run_seed_scenario(
+            [missing, fetched(self.seed_b["url"])],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["model_calls_used"], 2)
+        self.assertEqual(analysis_mock.call_count, 1)
+        self.assertEqual(score_mock.call_count, 1)
 
     def test_starting_analysis_failure_marks_run_failed(self):
         with patch.object(autonomy, "load_seed_pool", return_value=[self.seed]), patch.object(

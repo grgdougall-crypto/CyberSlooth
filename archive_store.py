@@ -66,8 +66,10 @@ class AutonomousRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
+    initial_seed_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     seed_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     seed_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    seed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     research_public_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     daily_discovery_public_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pages_retrieved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -129,6 +131,7 @@ def configure_database(url: str | None = None) -> str:
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     Base.metadata.create_all(_engine)
     _ensure_stage_06_columns()
+    _ensure_stage_10a_reliability_columns()
     if _engine.dialect.name == "sqlite":
         with _engine.begin() as connection:
             connection.execute(text("PRAGMA optimize"))
@@ -158,6 +161,21 @@ def _ensure_stage_06_columns() -> None:
             "CREATE INDEX IF NOT EXISTS idx_research_runs_daily_selected "
             "ON research_runs (daily_candidate_selected, daily_candidate_evaluated_at)"
         ))
+
+
+def _ensure_stage_10a_reliability_columns() -> None:
+    """Add the bounded seed-attempt metadata to an existing Stage 1.0A table."""
+
+    if _engine is None:
+        raise RuntimeError("The archive database is not initialized.")
+    existing = {column["name"] for column in inspect(_engine).get_columns("autonomous_runs")}
+    with _engine.begin() as connection:
+        if "initial_seed_id" not in existing:
+            connection.execute(text("ALTER TABLE autonomous_runs ADD COLUMN initial_seed_id VARCHAR(64)"))
+        if "seed_attempts" not in existing:
+            connection.execute(text(
+                "ALTER TABLE autonomous_runs ADD COLUMN seed_attempts INTEGER NOT NULL DEFAULT 0"
+            ))
 
 
 @contextmanager
@@ -331,25 +349,45 @@ def create_autonomous_run(now: datetime | None = None) -> AutonomousRun:
         raise AutonomousRunConflict("An autonomous expedition is already running.") from exc
 
 
-def set_autonomous_run_seed(public_run_id: str, seed_id: str, seed_url: str) -> None:
+def set_autonomous_run_seed(
+    public_run_id: str, seed_id: str, seed_url: str, *, attempt_number: int = 1,
+) -> None:
+    """Record the initial seed, current/final seed, and bounded attempt count."""
+
+    if attempt_number not in (1, 2):
+        raise ValueError("An autonomous run permits only one or two seed attempts.")
     with database_session() as session:
         run = session.scalar(select(AutonomousRun).where(AutonomousRun.public_run_id == public_run_id))
         if run is None or run.status != "running":
             raise RuntimeError("The autonomous run is not active.")
+        if attempt_number != run.seed_attempts + 1:
+            raise RuntimeError("The autonomous seed attempt sequence is invalid.")
+        if run.initial_seed_id is None:
+            run.initial_seed_id = seed_id
         run.seed_id = seed_id
         run.seed_url = seed_url
+        run.seed_attempts = attempt_number
 
 
 def autonomous_seed_last_used(seed_ids: list[str]) -> dict[str, datetime]:
     if not seed_ids:
         return {}
     with database_session() as session:
-        rows = session.execute(
+        final_rows = session.execute(
             select(AutonomousRun.seed_id, func.max(AutonomousRun.started_at))
             .where(AutonomousRun.seed_id.in_(seed_ids))
             .group_by(AutonomousRun.seed_id)
         ).all()
-        return {seed_id: used_at for seed_id, used_at in rows if seed_id is not None}
+        initial_rows = session.execute(
+            select(AutonomousRun.initial_seed_id, func.max(AutonomousRun.started_at))
+            .where(AutonomousRun.initial_seed_id.in_(seed_ids))
+            .group_by(AutonomousRun.initial_seed_id)
+        ).all()
+        last_used: dict[str, datetime] = {}
+        for seed_id, used_at in (*final_rows, *initial_rows):
+            if seed_id is not None and (seed_id not in last_used or used_at > last_used[seed_id]):
+                last_used[seed_id] = used_at
+        return last_used
 
 
 def complete_autonomous_run(

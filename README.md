@@ -85,17 +85,17 @@ Candidate selection uses at most one model call per manual request, considers at
 Each successful run:
 
 1. Creates an `AutonomousRun` in `running` state and acquires the database-backed active-run guard.
-2. Selects one enabled seed deterministically using least-recently-used order with stable seed-ID tie-breaking.
-3. Retrieves and analyzes exactly one starting page using the existing safety and prompt-injection controls.
+2. Selects one primary enabled seed deterministically using least-recently-used order with stable seed-ID tie-breaking.
+3. Retrieves the primary starting page using the existing safety controls. If that source has a retryable retrieval failure, it tries at most one different enabled seed from the same curated pool, then analyzes the first successfully retrieved starting page.
 4. Uses the existing one-hop exploration when the validated analysis contains candidate follow-ups; at most two pages may be selected.
 5. Validates and archives the completed research structure.
 6. Scores only the ten most recent archive records using the existing Stage 0.6 one-call evaluator.
 7. Publishes one `DailyDiscovery` that references the selected archived record.
 8. Completes the run record and stops without starting another expedition.
 
-The starter seed pool is stored in `data/autonomy_seeds.json`. It contains five benign public archive or informational starting points and can be curated without changing orchestration code. Seed selection uses no model call and arbitrary trigger-supplied URLs are not accepted.
+The starter seed pool is stored in `data/autonomy_seeds.json`. It contains five benign public archive or informational starting points and can be curated without changing orchestration code. Primary and alternate seed selection use no model call. The alternate must be a different enabled seed from this approved pool: arbitrary trigger-supplied or fallback URLs are never accepted.
 
-An autonomous run may use at most six model calls: one starting analysis, up to four existing exploration calls, and one cross-run scoring call. Retrieval is limited to one starting page plus at most two follow-up pages. Existing clients use zero automatic retries.
+An autonomous run may use at most six model calls: one starting analysis, up to four existing exploration calls, and one cross-run scoring call. Starting-source retrieval is limited to one primary curated seed plus at most one alternate curated seed, for a maximum of two starting-seed retrieval attempts. After one starting page succeeds, retrieval remains limited to at most two follow-up pages. Existing clients use zero automatic retries.
 
 Failures are recorded with a sanitized stage and message. Retrieval or analysis failure creates no archive or publication. Archive failure does not publish. Scoring failure preserves the newly archived record and the prior publication. Publication failure preserves the archive, ranking metadata, and prior publication. A unique active-run guard blocks concurrent execution, and a completed run blocks another normal run during the same UTC date. Failed runs may be manually retried.
 
@@ -122,7 +122,7 @@ The token is never included in frontend JavaScript, API responses, public status
 - `/status` displays only sanitized metadata for the latest autonomous run: public run ID, timestamps, status, page and model-call counts, publication state, safe failure stage, and applicable archive links.
 - `/archive` and archive detail pages distinguish a published `DAILY DISCOVERY` from an evaluated `DAILY CANDIDATE`.
 
-`AutonomousRun` stores the public run ID, timestamps, status, selected seed reference, archive/publication references, bounded counters, and safe failure metadata. `DailyDiscovery` stores one unique publication per UTC date and references the full `ResearchRun` rather than duplicating it.
+`AutonomousRun` stores the public run ID, timestamps, status, initial seed ID, final seed reference, seed-attempt count, archive/publication references, bounded counters, and safe failure metadata. Seed URLs remain excluded from public status. `DailyDiscovery` stores one unique publication per UTC date and references the full `ResearchRun` rather than duplicating it.
 
 ## Next planned stage
 

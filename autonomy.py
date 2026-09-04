@@ -26,7 +26,11 @@ from archive_store import (
 
 SEED_POOL_PATH = Path(__file__).resolve().parent / "data" / "autonomy_seeds.json"
 MAX_SEED_FILE_BYTES = 32 * 1024
+MAX_STARTING_SEED_ATTEMPTS = 2
 MAX_AUTONOMOUS_MODEL_CALLS = 6
+RETRYABLE_SEED_RETRIEVAL_CODES = frozenset({
+    "dns_failed", "source_status", "source_timeout", "source_unavailable", "retrieval_failed",
+})
 
 
 class AutonomyError(Exception):
@@ -79,10 +83,21 @@ def load_seed_pool(path: Path | None = None) -> list[dict[str, Any]]:
     return seeds
 
 
-def select_seed(seeds: list[dict[str, Any]]) -> dict[str, Any]:
+def select_seed(
+    seeds: list[dict[str, Any]], *, excluded_ids: set[str] | None = None,
+    excluded_urls: set[str] | None = None,
+) -> dict[str, Any]:
     """Choose the least-recently-used enabled seed, then stable ID order."""
 
-    enabled = sorted((seed for seed in seeds if seed["enabled"]), key=lambda seed: seed["id"])
+    blocked_ids = excluded_ids or set()
+    blocked_urls = excluded_urls or set()
+    enabled = sorted(
+        (
+            seed for seed in seeds
+            if seed["enabled"] and seed["id"] not in blocked_ids and seed["url"] not in blocked_urls
+        ),
+        key=lambda seed: seed["id"],
+    )
     if not enabled:
         raise AutonomyError("no_enabled_seeds", "No autonomous starting seeds are enabled.", 409)
     last_used = autonomous_seed_last_used([seed["id"] for seed in enabled])
@@ -114,6 +129,32 @@ def _transition(logger: logging.Logger, public_run_id: str, stage: str, **metada
     logger.info("autonomous_run=%s stage=%s%s", public_run_id, stage, f" {fields}" if fields else "")
 
 
+def _retrieval_outcome(error: cyberslooth.IngestError | None) -> str:
+    if error is None:
+        return "success"
+    if error.code == "source_status":
+        for status in (403, 404, 410):
+            if f"HTTP {status}" in error.message:
+                return f"http_{status}"
+        return "http_status"
+    return {
+        "dns_failed": "dns_failure",
+        "source_timeout": "timeout",
+        "source_unavailable": "unavailable",
+        "retrieval_failed": "unavailable",
+    }.get(error.code, "not_retryable")
+
+
+def _log_seed_retrieval(
+    logger: logging.Logger, public_run_id: str, attempt_number: int, seed_id: str,
+    error: cyberslooth.IngestError | None,
+) -> None:
+    logger.info(
+        "autonomous_run=%s seed_attempt=%s seed_id=%s retrieval_outcome=%s",
+        public_run_id, attempt_number, seed_id, _retrieval_outcome(error),
+    )
+
+
 def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[str, Any]:
     """Execute one complete, bounded expedition after a manual authorized trigger."""
 
@@ -130,15 +171,37 @@ def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[s
     stage = "seed"
     _transition(log, public_run_id, "started")
     try:
-        seed = select_seed(load_seed_pool())
-        set_autonomous_run_seed(public_run_id, seed["id"], seed["url"])
-        _transition(log, public_run_id, "seed_selected", seed_id=seed["id"])
-
+        seeds = load_seed_pool()
+        seed = select_seed(seeds)
         stage = "retrieval"
-        fetched = cyberslooth.fetch_public_page(seed["url"])
+        attempted_ids: set[str] = set()
+        attempted_urls: set[str] = set()
+        fetched = None
+        for attempt_number in range(1, MAX_STARTING_SEED_ATTEMPTS + 1):
+            set_autonomous_run_seed(
+                public_run_id, seed["id"], seed["url"], attempt_number=attempt_number,
+            )
+            attempted_ids.add(seed["id"])
+            attempted_urls.add(seed["url"])
+            try:
+                fetched = cyberslooth.fetch_public_page(seed["url"])
+            except cyberslooth.IngestError as exc:
+                _log_seed_retrieval(log, public_run_id, attempt_number, seed["id"], exc)
+                if exc.code not in RETRYABLE_SEED_RETRIEVAL_CODES or attempt_number >= MAX_STARTING_SEED_ATTEMPTS:
+                    raise
+                try:
+                    seed = select_seed(
+                        seeds, excluded_ids=attempted_ids, excluded_urls=attempted_urls,
+                    )
+                except AutonomyError:
+                    raise exc
+                continue
+            _log_seed_retrieval(log, public_run_id, attempt_number, seed["id"], None)
+            break
+        if fetched is None:
+            raise AutonomyError("retrieval_failed", "The starting source could not be retrieved.", 502)
         pages_retrieved = 1
         evidence = cyberslooth.build_research_evidence(fetched)
-        _transition(log, public_run_id, "starting_page_retrieved", pages_retrieved=pages_retrieved)
 
         stage = "analysis"
         initial_budget = cyberslooth.ModelCallBudget(maximum=1)
