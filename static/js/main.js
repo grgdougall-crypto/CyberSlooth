@@ -14,12 +14,16 @@ const sourceUrl = document.querySelector('#source-url');
 const inspectButton = document.querySelector('#inspect-button');
 const sourceFormStatus = document.querySelector('#source-form-status');
 const liveRecord = document.querySelector('#live-record');
+const analyzeButton = document.querySelector('#analyze-button');
+const analysisStatus = document.querySelector('#analysis-status');
+const aiAnalysis = document.querySelector('#ai-analysis');
 
 let discoveries = [];
 let currentDiscovery = null;
 let lastIndex = -1;
 let running = false;
 let runCounter = 0;
+let currentEvidence = null;
 
 const stageMessages = [
   'Seed framed: early personal web culture.',
@@ -157,8 +161,20 @@ function setSourceLink(selector, value) {
   link.href = value;
 }
 
+function resetAnalysisState() {
+  aiAnalysis.hidden = true;
+  document.querySelector('#no-analysis').hidden = false;
+  analysisStatus.className = 'analysis-status';
+  analysisStatus.textContent = '';
+  analyzeButton.disabled = false;
+  analyzeButton.removeAttribute('aria-busy');
+  analyzeButton.childNodes[0].textContent = 'Analyze Evidence ';
+}
+
 function renderLiveEvidence(evidence) {
   const { source, content, links } = evidence;
+  currentEvidence = evidence;
+  resetAnalysisState();
   setText('#live-record-title', content.title || 'Untitled public page');
   setText('#live-status-code', String(source.status_code));
   setSourceLink('#live-requested-url', source.requested_url);
@@ -188,6 +204,61 @@ function renderLiveEvidence(evidence) {
   liveRecord.hidden = false;
 }
 
+function appendAnalysisListItems(selector, values) {
+  const list = document.querySelector(selector);
+  list.replaceChildren();
+  values.forEach(value => {
+    const item = document.createElement('li');
+    item.textContent = value;
+    list.append(item);
+  });
+}
+
+function renderAnalysis(analysis) {
+  setText('#analysis-page-type', analysis.page_type);
+  setText('#analysis-summary', analysis.summary);
+  setText('#analysis-interest', analysis.why_interesting);
+  setText('#analysis-decision', analysis.archive_recommendation.decision.toUpperCase());
+  setText('#analysis-decision-reason', analysis.archive_recommendation.reason);
+  setText('#analysis-confidence', analysis.confidence.toUpperCase());
+
+  const observations = document.querySelector('#analysis-observations');
+  observations.replaceChildren();
+  analysis.observations.forEach((observation, index) => {
+    const item = document.createElement('li');
+    const number = document.createElement('span');
+    const copy = document.createElement('div');
+    const claim = document.createElement('p');
+    const evidence = document.createElement('small');
+    number.textContent = String(index + 1).padStart(2, '0');
+    claim.textContent = observation.claim;
+    evidence.textContent = `Evidence: ${observation.evidence}`;
+    copy.append(claim, evidence);
+    item.append(number, copy);
+    observations.append(item);
+  });
+
+  appendAnalysisListItems('#analysis-uncertainties', analysis.uncertainties);
+  const followUps = document.querySelector('#analysis-followups');
+  const noFollowUps = document.querySelector('#analysis-no-followups');
+  followUps.replaceChildren();
+  analysis.candidate_follow_ups.forEach(followUp => {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    const reason = document.createElement('p');
+    link.textContent = followUp.url;
+    link.href = followUp.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer nofollow';
+    reason.textContent = followUp.reason;
+    item.append(link, reason);
+    followUps.append(item);
+  });
+  noFollowUps.hidden = analysis.candidate_follow_ups.length > 0;
+  document.querySelector('#no-analysis').hidden = true;
+  aiAnalysis.hidden = false;
+}
+
 sourceForm.addEventListener('submit', async event => {
   event.preventDefault();
   inspectButton.disabled = true;
@@ -195,6 +266,7 @@ sourceForm.addEventListener('submit', async event => {
   sourceFormStatus.className = 'source-form-status loading';
   sourceFormStatus.textContent = 'Retrieving one bounded public page…';
   liveRecord.hidden = true;
+  currentEvidence = null;
 
   try {
     const response = await fetch('/api/ingest', {
@@ -217,6 +289,41 @@ sourceForm.addEventListener('submit', async event => {
   } finally {
     inspectButton.disabled = false;
     inspectButton.removeAttribute('aria-busy');
+  }
+});
+
+analyzeButton.addEventListener('click', async () => {
+  if (!currentEvidence) return;
+  analyzeButton.disabled = true;
+  analyzeButton.setAttribute('aria-busy', 'true');
+  analysisStatus.className = 'analysis-status loading';
+  analysisStatus.textContent = 'Analyzing only the supplied evidence…';
+  aiAnalysis.hidden = true;
+
+  let completed = false;
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ evidence: currentEvidence })
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error?.message || 'The evidence could not be analyzed safely.');
+    }
+    renderAnalysis(payload.analysis);
+    completed = true;
+    analysisStatus.className = 'analysis-status success';
+    analysisStatus.textContent = 'Schema-constrained analysis validated.';
+    analyzeButton.childNodes[0].textContent = 'Analysis Complete ';
+    aiAnalysis.scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'start' });
+  } catch (error) {
+    analysisStatus.className = 'analysis-status error';
+    analysisStatus.textContent = error.message;
+    document.querySelector('#no-analysis').hidden = false;
+  } finally {
+    analyzeButton.removeAttribute('aria-busy');
+    analyzeButton.disabled = completed;
   }
 });
 

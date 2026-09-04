@@ -19,7 +19,7 @@
     </a>
     <div class="header-meta">
       <span class="status-dot" aria-hidden="true"></span>
-      Stage 0.2 / Local
+      Stage 0.3 / Live
     </div>
   </header>
 
@@ -141,7 +141,7 @@
           <div>
             <p class="kicker live-kicker"><span class="live-pulse" aria-hidden="true"></span> Real Source Test</p>
             <h2 id="live-source-title">Inspect one public page.</h2>
-            <p>Retrieve a bounded snapshot of visible text and links from one public HTTP or HTTPS source. This is evidence collection—not analysis.</p>
+            <p>Retrieval is deterministic application code. Optional analysis is model-generated, schema-constrained, and validated before display; the model never browses independently.</p>
           </div>
           <form class="source-form" id="source-form">
             <label for="source-url">Public source URL</label>
@@ -181,7 +181,48 @@
               <p class="empty-leads" id="empty-leads" hidden>No public HTTP or HTTPS links were extracted.</p>
             </section>
           </div>
-          <p class="no-analysis"><span aria-hidden="true">◇</span> No AI analysis has been performed yet.</p>
+          <div class="analysis-launch" id="analysis-launch">
+            <div>
+              <p class="no-analysis" id="no-analysis"><span aria-hidden="true">◇</span> No AI analysis has been performed yet.</p>
+              <p class="analysis-scope">The analyst receives only the source evidence shown above. Candidate links remain unvisited.</p>
+            </div>
+            <button class="button analyze-button" id="analyze-button" type="button">Analyze Evidence <span aria-hidden="true">↘</span></button>
+            <p class="analysis-status" id="analysis-status" role="status" aria-live="polite"></p>
+          </div>
+
+          <section class="ai-analysis" id="ai-analysis" aria-labelledby="ai-analysis-title" hidden>
+            <div class="ai-analysis-head">
+              <div>
+                <p class="kicker ai-kicker">AI Analysis / Validated Output</p>
+                <h3 id="ai-analysis-title">A bounded reading of the evidence.</h3>
+              </div>
+              <div class="analysis-classification"><span>Page type</span><strong id="analysis-page-type"></strong></div>
+            </div>
+            <div class="analysis-narrative">
+              <section><h4>Summary</h4><p id="analysis-summary"></p></section>
+              <section><h4>Why CyberSlooth finds this interesting</h4><p id="analysis-interest"></p></section>
+            </div>
+            <div class="analysis-lists">
+              <section>
+                <h4>Observed from evidence</h4>
+                <ol class="grounded-observations" id="analysis-observations"></ol>
+              </section>
+              <section>
+                <h4>Uncertain / not established</h4>
+                <ul class="uncertainty-list" id="analysis-uncertainties"></ul>
+              </section>
+            </div>
+            <section class="analysis-followups">
+              <h4>Possible leads <span>Unvisited</span></h4>
+              <ul id="analysis-followups"></ul>
+              <p id="analysis-no-followups" hidden>No candidate link was recommended from this evidence.</p>
+            </section>
+            <div class="analysis-verdict">
+              <div><span>Archive recommendation</span><strong id="analysis-decision"></strong><p id="analysis-decision-reason"></p></div>
+              <div><span>Confidence</span><strong id="analysis-confidence"></strong></div>
+            </div>
+            <p class="model-disclosure"><span aria-hidden="true">◇</span> Model-generated interpretation. Schema-constrained and application-validated; not independently verified.</p>
+          </section>
         </article>
       </div>
     </section>
@@ -234,16 +275,16 @@
         <div class="status-grid">
           <div>
             <p class="kicker">Current Stage</p>
-            <h2 id="status-title">Public URL ingestion prototype</h2>
-            <p>A bounded live retrieval layer alongside the preserved local expedition simulation.</p>
+            <h2 id="status-title">Evidence analysis prototype</h2>
+            <p>Deterministic retrieval followed by optional, bounded model analysis of one normalized evidence record.</p>
           </div>
           <div class="status-list implemented">
             <h3><span>✓</span> Implemented</h3>
-            <ul><li>Simulated expedition</li><li>Single public-page retrieval</li><li>URL and redirect safety checks</li><li>Evidence / provenance contract</li></ul>
+            <ul><li>Simulated expedition</li><li>Single public-page retrieval</li><li>Structured AI analysis</li><li>Output and candidate-URL validation</li></ul>
           </div>
           <div class="status-list absent">
             <h3><span>×</span> Not implemented</h3>
-            <ul><li>AI analysis or ranking</li><li>Candidate-link exploration</li><li>Autonomous scheduling</li><li>Persistent database</li><li>Recursive crawling</li><li>External model APIs</li></ul>
+            <ul><li>Candidate-link exploration</li><li>Independent model browsing</li><li>Autonomous scheduling</li><li>Persistent database</li><li>Recursive crawling</li><li>Automatic publishing</li></ul>
           </div>
         </div>
       </div>
@@ -252,7 +293,7 @@
 
   <footer class="site-footer wrap">
     <span>CyberSlooth</span>
-    <span>Stage 0.2 · Bounded live retrieval</span>
+    <span>Stage 0.3 · Evidence-bound analysis</span>
     <a href="#top">Return to top ↑</a>
   </footer>
 
