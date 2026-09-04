@@ -21,6 +21,10 @@ const explorationLaunch = document.querySelector('#exploration-launch');
 const exploreButton = document.querySelector('#explore-button');
 const explorationStatus = document.querySelector('#exploration-status');
 const followUpExpedition = document.querySelector('#follow-up-expedition');
+const archiveLaunch = document.querySelector('#archive-launch');
+const archiveButton = document.querySelector('#archive-button');
+const archiveSaveStatus = document.querySelector('#archive-save-status');
+const archiveConfirmation = document.querySelector('#archive-confirmation');
 
 let discoveries = [];
 let currentDiscovery = null;
@@ -29,6 +33,7 @@ let running = false;
 let runCounter = 0;
 let currentEvidence = null;
 let currentAnalysis = null;
+let currentExploration = null;
 
 const stageMessages = [
   'Seed framed: early personal web culture.',
@@ -168,6 +173,7 @@ function setSourceLink(selector, value) {
 
 function resetAnalysisState() {
   currentAnalysis = null;
+  currentExploration = null;
   aiAnalysis.hidden = true;
   document.querySelector('#no-analysis').hidden = false;
   analysisStatus.className = 'analysis-status';
@@ -182,6 +188,23 @@ function resetAnalysisState() {
   exploreButton.disabled = false;
   exploreButton.removeAttribute('aria-busy');
   exploreButton.childNodes[0].textContent = 'Explore Leads ';
+  archiveLaunch.hidden = true;
+  archiveConfirmation.hidden = true;
+  archiveSaveStatus.className = 'archive-save-status';
+  archiveSaveStatus.textContent = '';
+  archiveButton.disabled = false;
+  archiveButton.removeAttribute('aria-busy');
+  archiveButton.childNodes[0].textContent = 'Archive Research Run ';
+}
+
+function prepareArchiveAction() {
+  archiveLaunch.hidden = false;
+  archiveConfirmation.hidden = true;
+  archiveSaveStatus.className = 'archive-save-status';
+  archiveSaveStatus.textContent = '';
+  archiveButton.disabled = false;
+  archiveButton.removeAttribute('aria-busy');
+  archiveButton.childNodes[0].textContent = 'Archive Research Run ';
 }
 
 function renderLiveEvidence(evidence) {
@@ -272,6 +295,7 @@ function renderAnalysis(analysis) {
   document.querySelector('#no-analysis').hidden = true;
   aiAnalysis.hidden = false;
   explorationLaunch.hidden = !(currentEvidence && currentEvidence.links.candidates.length > 0);
+  prepareArchiveAction();
 }
 
 function externalLink(url, label = url) {
@@ -386,6 +410,10 @@ function renderExpedition(expedition) {
   list.replaceChildren(...expedition.explored.map(renderFollowUp));
   renderSynthesis(expedition);
   followUpExpedition.hidden = false;
+  if (expedition.synthesis) {
+    currentExploration = expedition;
+    prepareArchiveAction();
+  }
 }
 
 sourceForm.addEventListener('submit', async event => {
@@ -493,6 +521,44 @@ exploreButton.addEventListener('click', async () => {
   } finally {
     exploreButton.removeAttribute('aria-busy');
     exploreButton.disabled = completed;
+  }
+});
+
+archiveButton.addEventListener('click', async () => {
+  if (!currentEvidence || !currentAnalysis) return;
+  archiveButton.disabled = true;
+  archiveButton.setAttribute('aria-busy', 'true');
+  archiveSaveStatus.className = 'archive-save-status loading';
+  archiveSaveStatus.textContent = 'Saving a validated public research record…';
+  archiveConfirmation.hidden = true;
+
+  let completed = false;
+  try {
+    const researchRun = { evidence: currentEvidence, analysis: currentAnalysis };
+    if (currentExploration) researchRun.exploration = currentExploration;
+    const response = await fetch('/api/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(researchRun)
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error?.message || 'The research run could not be archived safely.');
+    }
+    completed = true;
+    archiveSaveStatus.className = 'archive-save-status';
+    archiveSaveStatus.textContent = payload.duplicate ? 'This identical run was already archived recently.' : '';
+    setText('#archived-public-id', payload.public_id);
+    const recordLink = document.querySelector('#open-archived-record');
+    recordLink.href = payload.archive_url;
+    archiveConfirmation.hidden = false;
+    archiveButton.childNodes[0].textContent = 'Research Run Archived ';
+  } catch (error) {
+    archiveSaveStatus.className = 'archive-save-status error';
+    archiveSaveStatus.textContent = error.message;
+  } finally {
+    archiveButton.removeAttribute('aria-busy');
+    archiveButton.disabled = completed;
   }
 });
 

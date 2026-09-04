@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CyberSlooth archived research record {{ record.public_id }}.">
+  <title>{{ record.title }} — CyberSlooth Archive</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#record">Skip to research record</a>
+  <header class="archive-header">
+    <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
+    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 0.5 / Live</strong></nav>
+  </header>
+
+  <main class="record-page" id="record">
+    <div class="record-hero">
+      <p class="kicker">Archived research record</p>
+      <div class="record-id">{{ record.public_id }}</div>
+      <h1>{{ record.title }}</h1>
+      <p>{{ record.summary }}</p>
+      <div class="record-badges"><span>{{ record.archive_decision|upper }}</span><span>{{ record.confidence|upper }} CONFIDENCE</span><span>{{ "ONE-HOP EXPLORED" if record.exploration_performed else "ANALYSIS ONLY" }}</span></div>
+    </div>
+
+    <section class="record-section" aria-labelledby="original-title">
+      <div class="section-marker">01</div>
+      <div class="section-body">
+        <p class="kicker">Observed evidence</p><h2 id="original-title">Original Source</h2>
+        <p class="evidence-copy">{{ record.evidence.content.text_excerpt or "No visible text was extracted." }}</p>
+        <dl class="provenance-grid">
+          <div><dt>Requested URL</dt><dd><a href="{{ record.evidence.source.requested_url }}" rel="noopener noreferrer nofollow">{{ record.evidence.source.requested_url }}</a></dd></div>
+          <div><dt>Final URL</dt><dd><a href="{{ record.evidence.source.final_url }}" rel="noopener noreferrer nofollow">{{ record.evidence.source.final_url }}</a></dd></div>
+          <div><dt>Retrieved</dt><dd>{{ record.evidence.source.retrieved_at }}</dd></div>
+          <div><dt>Response</dt><dd>HTTP {{ record.evidence.source.status_code }} · {{ record.evidence.source.content_type }}</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="record-section" aria-labelledby="analysis-title">
+      <div class="section-marker">02</div>
+      <div class="section-body">
+        <p class="kicker">Model-generated · Validated</p><h2 id="analysis-title">AI Analysis</h2>
+        <div class="analysis-pair"><div><h3>Summary</h3><p>{{ record.analysis.summary }}</p></div><div><h3>Why it matters</h3><p>{{ record.analysis.why_interesting }}</p></div></div>
+        <h3>Grounded observations</h3>
+        <ol class="observation-list">{% for observation in record.analysis.observations %}<li><p>{{ observation.claim }}</p><small>Evidence: {{ observation.evidence }}</small></li>{% endfor %}</ol>
+        {% if record.analysis.candidate_follow_ups %}<h3 class="candidate-heading">Candidate leads from analysis</h3><ul class="candidate-records">{% for lead in record.analysis.candidate_follow_ups %}<li><a href="{{ lead.url }}" rel="noopener noreferrer nofollow">{{ lead.url }}</a><span>{{ "Visited in the one-hop expedition" if lead.url in record.visited_urls else "Suggested only · Not visited" }}</span><p>{{ lead.reason }}</p></li>{% endfor %}</ul>{% endif %}
+      </div>
+    </section>
+
+    {% if record.exploration_performed %}
+    <section class="record-section" aria-labelledby="follow-title">
+      <div class="section-marker">03</div>
+      <div class="section-body">
+        <p class="kicker">Actually visited · One hop only</p><h2 id="follow-title">Follow-up Expedition</h2>
+        <div class="follow-records">
+          {% for item in record.exploration.explored %}
+          <article class="follow-record {{ 'failed' if item.retrieval.status == 'failed' else '' }}">
+            <div class="follow-heading"><span>{{ "%02d"|format(loop.index) }}</span><div><h3>{{ item.title if item.title else (item.evidence.content.title if item.evidence else "Follow-up unavailable") }}</h3><a href="{{ item.url }}" rel="noopener noreferrer nofollow">{{ item.url }}</a></div><strong>{{ "VISITED + ANALYZED" if item.analysis else ("VISITED · ANALYSIS FAILED" if item.evidence else "RETRIEVAL FAILED") }}</strong></div>
+            <p><b>Why selected:</b> {{ item.selection_reason }}</p>
+            {% if item.analysis %}
+              <div class="follow-summary"><p><b>Analysis:</b> {{ item.summary }}</p><p><b>What it added:</b> {{ item.what_it_added }}</p></div>
+              <dl class="provenance-grid compact">
+                <div><dt>Final URL</dt><dd>{{ item.evidence.source.final_url }}</dd></div><div><dt>Retrieved</dt><dd>{{ item.evidence.source.retrieved_at }}</dd></div><div><dt>Response</dt><dd>HTTP {{ item.evidence.source.status_code }} · {{ item.evidence.source.content_type }}</dd></div><div><dt>Further links</dt><dd>{{ item.evidence.links.candidates|length }} suggested, not visited</dd></div>
+              </dl>
+            {% elif item.evidence %}<p class="failure-note">{{ item.analysis_status.error.message }}</p><dl class="provenance-grid compact"><div><dt>Final URL</dt><dd>{{ item.evidence.source.final_url }}</dd></div><div><dt>Retrieved</dt><dd>{{ item.evidence.source.retrieved_at }}</dd></div><div><dt>Response</dt><dd>HTTP {{ item.evidence.source.status_code }} · {{ item.evidence.source.content_type }}</dd></div><div><dt>Analysis</dt><dd>Failed safely; retrieved evidence preserved</dd></div></dl>
+            {% else %}<p class="failure-note">{{ item.retrieval.error.message }}</p>{% endif %}
+          </article>
+          {% endfor %}
+        </div>
+        <div class="stop-note"><strong>Expedition stopped.</strong><span>No follow-up-of-follow-up links were visited.</span></div>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if record.synthesis %}
+    <section class="record-section" aria-labelledby="synthesis-title">
+      <div class="section-marker">04</div>
+      <div class="section-body">
+        <p class="kicker">Compared evidence</p><h2 id="synthesis-title">Synthesis</h2>
+        <div class="synthesis-lead"><h3>What changed</h3><p>{{ record.synthesis.what_changed }}</p></div>
+        <div class="analysis-pair"><div><h3>Confirmed</h3><ul>{% for item in record.synthesis.what_was_confirmed %}<li>{{ item }}</li>{% endfor %}</ul></div><div><h3>Still uncertain</h3><ul>{% for item in record.synthesis.what_remains_uncertain %}<li>{{ item }}</li>{% endfor %}</ul></div></div>
+        <div class="suggested-lead"><span>Suggested future lead · Not visited</span>{% if record.synthesis.best_next_lead.url %}<a href="{{ record.synthesis.best_next_lead.url }}" rel="noopener noreferrer nofollow">{{ record.synthesis.best_next_lead.url }}</a>{% endif %}<p>{{ record.synthesis.best_next_lead.reason }}</p></div>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="record-section" aria-labelledby="uncertainty-title">
+      <div class="section-marker">{{ "05" if record.exploration_performed else "03" }}</div>
+      <div class="section-body">
+        <p class="kicker">Not established</p><h2 id="uncertainty-title">Uncertainties</h2>
+        <ul class="uncertainty-list">{% for item in record.analysis.uncertainties %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </section>
+
+    <section class="record-section" aria-labelledby="provenance-title">
+      <div class="section-marker">{{ "06" if record.exploration_performed else "04" }}</div>
+      <div class="section-body">
+        <p class="kicker">Source boundaries</p><h2 id="provenance-title">Provenance</h2>
+        <p>The original source and each successfully retrieved follow-up remain separate. Candidate and suggested links are not represented as visited evidence.</p>
+        <p><b>Original:</b> {{ record.final_url }}</p>
+        {% if record.exploration_performed %}{% for item in record.exploration.explored %}{% if item.evidence %}<p><b>Follow-up {{ loop.index }}:</b> {{ item.evidence.source.final_url }}</p>{% endif %}{% endfor %}{% endif %}
+      </div>
+    </section>
+
+    <section class="record-section" aria-labelledby="metadata-title">
+      <div class="section-marker">{{ "07" if record.exploration_performed else "05" }}</div>
+      <div class="section-body">
+        <p class="kicker">Persistent record</p><h2 id="metadata-title">Archive Metadata</h2>
+        <dl class="metadata-list"><div><dt>Public record ID</dt><dd>{{ record.public_id }}</dd></div><div><dt>Archived</dt><dd>{{ record.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</dd></div><div><dt>Status</dt><dd>{{ record.status|upper }}</dd></div><div><dt>Research value</dt><dd>{{ record.research_value|upper if record.research_value else "NOT ASSESSED" }}</dd></div></dl>
+      </div>
+    </section>
+  </main>
+
+  <footer><span>CyberSlooth</span><span>{{ record.public_id }}</span><a href="{{ url_for('archive_index') }}">Back to archive ↑</a></footer>
+</body>
+</html>

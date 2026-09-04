@@ -1,8 +1,9 @@
-"""CyberSlooth Stage 0.4: bounded retrieval, analysis, and one-hop exploration."""
+"""CyberSlooth Stage 0.5: bounded research with an explicit persistent archive."""
 
 from __future__ import annotations
 
 import ipaddress
+import hashlib
 import json
 import os
 import re
@@ -16,8 +17,11 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import openai
 import requests
 from openai import OpenAI
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
+
+from archive_store import create_research_run, get_research_run, list_research_runs
 
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +43,7 @@ MAX_EXPLORE_REQUEST_BYTES = 48 * 1024
 MAX_EXPLORE_CANDIDATES = 5
 MAX_FOLLOW_UPS = 2
 MAX_EXPLORE_MODEL_CALLS = 4
+MAX_ARCHIVE_REQUEST_BYTES = 64 * 1024
 
 ANALYSIS_SCHEMA = {
     "type": "object",
@@ -182,6 +187,16 @@ class AnalysisError(Exception):
 
 class ExplorationError(Exception):
     """An expected, browser-safe one-hop exploration failure."""
+
+    def __init__(self, code: str, message: str, status: int = 400) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+
+
+class ArchiveError(Exception):
+    """An expected, browser-safe archive validation or persistence failure."""
 
     def __init__(self, code: str, message: str, status: int = 400) -> None:
         super().__init__(message)
@@ -1008,6 +1023,278 @@ def explore_evidence(evidence: dict[str, Any], analysis: dict[str, Any]) -> tupl
     return base_result, 200
 
 
+def _archive_string(container: dict[str, Any], key: str, maximum: int) -> str:
+    value = container.get(key)
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise ArchiveError("invalid_archive", f"Archive field {key} is missing or invalid.")
+    return value.strip()
+
+
+def _json_safe_copy(value: Any) -> Any:
+    """Reduce validated Python structures to JSON primitives for storage."""
+
+    try:
+        return json.loads(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    except (TypeError, ValueError) as exc:
+        raise ArchiveError("invalid_archive", "The research run is not JSON-safe.") from exc
+
+
+def _archive_error_shape(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != {"code", "message"}:
+        raise ArchiveError("invalid_archive", "A follow-up failure record is malformed.")
+    return {
+        "code": _archive_string(value, "code", 80),
+        "message": _archive_string(value, "message", 500),
+    }
+
+
+def validate_archivable_exploration(
+    value: Any, original_evidence: dict[str, Any], original_analysis: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Re-validate a completed Stage 0.4 result without trusting browser metadata."""
+
+    expected_keys = {
+        "original", "selected_count", "explored", "model_calls", "stopped",
+        "starting_point", "synthesis",
+    }
+    if not isinstance(value, dict) or set(value) != expected_keys:
+        raise ArchiveError("invalid_exploration", "The exploration result is incomplete or malformed.")
+    original = value.get("original")
+    if not isinstance(original, dict) or set(original) != {"evidence", "analysis"}:
+        raise ArchiveError("invalid_exploration", "The exploration starting point is malformed.")
+    if original.get("evidence") != original_evidence or original.get("analysis") != original_analysis:
+        raise ArchiveError("mismatched_exploration", "The exploration does not match the supplied original research record.")
+
+    selected_count = value.get("selected_count")
+    explored = value.get("explored")
+    if isinstance(selected_count, bool) or not isinstance(selected_count, int) or not 1 <= selected_count <= MAX_FOLLOW_UPS:
+        raise ArchiveError("invalid_exploration", "The selected follow-up count is invalid.")
+    if not isinstance(explored, list) or len(explored) != selected_count:
+        raise ArchiveError("invalid_exploration", "The explored follow-up list is invalid.")
+
+    model_calls = value.get("model_calls")
+    stopped = value.get("stopped")
+    if (
+        not isinstance(model_calls, dict) or set(model_calls) != {"used", "maximum"}
+        or model_calls.get("maximum") != MAX_EXPLORE_MODEL_CALLS
+        or isinstance(model_calls.get("used"), bool)
+        or not isinstance(model_calls.get("used"), int)
+        or not 1 <= model_calls["used"] <= MAX_EXPLORE_MODEL_CALLS
+    ):
+        raise ArchiveError("invalid_exploration", "The exploration model-call record is invalid.")
+    if not isinstance(stopped, dict) or stopped != {"value": True, "reason": "Follow-up budget reached."}:
+        raise ArchiveError("invalid_exploration", "The exploration stop marker is invalid.")
+
+    original_allowlist = set(original_evidence["links"]["candidates"])
+    seen_urls: set[str] = set()
+    successful: list[dict[str, Any]] = []
+    analysis_attempts = 0
+    canonical_by_url: dict[str, dict[str, Any]] = {}
+    for item in explored:
+        if not isinstance(item, dict):
+            raise ArchiveError("invalid_exploration", "A follow-up record is malformed.")
+        url = item.get("url")
+        if url not in original_allowlist or url in seen_urls:
+            raise ArchiveError("invalid_exploration", "A follow-up URL is outside the original allowlist.")
+        seen_urls.add(url)
+        selection_reason = _archive_string(item, "selection_reason", 300)
+        retrieval = item.get("retrieval")
+        analysis_status = item.get("analysis_status")
+        if not isinstance(retrieval, dict) or set(retrieval) != {"status", "error"}:
+            raise ArchiveError("invalid_exploration", "A follow-up retrieval status is malformed.")
+        if not isinstance(analysis_status, dict) or set(analysis_status) != {"status", "error"}:
+            raise ArchiveError("invalid_exploration", "A follow-up analysis status is malformed.")
+
+        if retrieval.get("status") == "failed":
+            required = {"url", "selection_reason", "retrieval", "analysis_status", "evidence", "analysis"}
+            if set(item) != required or item.get("evidence") is not None or item.get("analysis") is not None:
+                raise ArchiveError("invalid_exploration", "A failed retrieval contains unexpected evidence.")
+            if analysis_status != {"status": "not_run", "error": None}:
+                raise ArchiveError("invalid_exploration", "A failed retrieval has an invalid analysis marker.")
+            canonical_by_url[url] = {
+                "url": url,
+                "selection_reason": selection_reason,
+                "retrieval": {"status": "failed", "error": _archive_error_shape(retrieval.get("error"))},
+                "analysis_status": analysis_status,
+                "evidence": None,
+                "analysis": None,
+            }
+            continue
+
+        if retrieval != {"status": "success", "error": None}:
+            raise ArchiveError("invalid_exploration", "A follow-up retrieval marker is invalid.")
+        analysis_attempts += 1
+        if analysis_status.get("status") == "failed":
+            required = {"url", "selection_reason", "retrieval", "analysis_status", "evidence", "analysis"}
+            if set(item) != required or item.get("analysis") is not None:
+                raise ArchiveError("invalid_exploration", "A failed follow-up analysis record is malformed.")
+            try:
+                follow_evidence = validate_evidence_record(item.get("evidence"))
+            except AnalysisError as exc:
+                raise ArchiveError("invalid_exploration", "Retrieved follow-up evidence is invalid.") from exc
+            if follow_evidence["source"]["requested_url"] != url:
+                raise ArchiveError("invalid_exploration", "Follow-up provenance does not match its selected URL.")
+            canonical_by_url[url] = {
+                "url": url,
+                "selection_reason": selection_reason,
+                "retrieval": retrieval,
+                "analysis_status": {"status": "failed", "error": _archive_error_shape(analysis_status.get("error"))},
+                "evidence": follow_evidence,
+                "analysis": None,
+            }
+            continue
+        if analysis_status != {"status": "success", "error": None}:
+            raise ArchiveError("invalid_exploration", "A follow-up analysis marker is invalid.")
+        required = {
+            "url", "selection_reason", "retrieval", "analysis_status", "evidence", "analysis",
+            "title", "summary", "what_it_added", "confidence",
+        }
+        if set(item) != required:
+            raise ArchiveError("invalid_exploration", "A successful follow-up record is malformed.")
+        try:
+            follow_evidence = validate_evidence_record(item.get("evidence"))
+            follow_analysis = validate_analysis_output(item.get("analysis"), follow_evidence)
+        except AnalysisError as exc:
+            raise ArchiveError("invalid_exploration", "A follow-up evidence record or analysis is invalid.") from exc
+        if follow_evidence["source"]["requested_url"] != url:
+            raise ArchiveError("invalid_exploration", "Follow-up provenance does not match its selected URL.")
+        successful_item = {
+            "url": url,
+            "selection_reason": selection_reason,
+            "evidence": follow_evidence,
+            "analysis": follow_analysis,
+        }
+        successful.append(successful_item)
+        canonical_by_url[url] = {
+            **successful_item,
+            "retrieval": retrieval,
+            "analysis_status": analysis_status,
+        }
+
+    if not successful:
+        raise ArchiveError("invalid_exploration", "At least one analyzed follow-up is required for an explored archive.")
+    expected_calls = 2 + analysis_attempts
+    if model_calls["used"] != expected_calls:
+        raise ArchiveError("invalid_exploration", "The exploration model-call count does not match the completed work.")
+
+    comparison_input = {
+        "starting_point": value.get("starting_point"),
+        "explored": [
+            {
+                "url": item.get("url"),
+                "title": item.get("title"),
+                "selection_reason": item.get("selection_reason"),
+                "summary": item.get("summary"),
+                "what_it_added": item.get("what_it_added"),
+                "confidence": item.get("confidence"),
+            }
+            for item in explored if item.get("analysis_status", {}).get("status") == "success"
+        ],
+        "synthesis": value.get("synthesis"),
+    }
+    allowed_next_leads = set(original_evidence["links"]["candidates"])
+    for item in successful:
+        allowed_next_leads.update(item["evidence"]["links"]["candidates"])
+    try:
+        comparison = _validate_synthesis(comparison_input, successful, allowed_next_leads)
+    except (ExplorationError, AnalysisError) as exc:
+        raise ArchiveError("invalid_exploration", "The exploration synthesis is invalid.") from exc
+
+    comparison_by_url = {item["url"]: item for item in comparison["explored"]}
+    canonical_explored = []
+    for source_item in explored:
+        canonical = canonical_by_url[source_item["url"]]
+        if source_item["url"] in comparison_by_url:
+            canonical = {**canonical, **comparison_by_url[source_item["url"]]}
+        canonical_explored.append(canonical)
+    exploration = {
+        "selected_count": selected_count,
+        "explored": canonical_explored,
+        "model_calls": {"used": model_calls["used"], "maximum": MAX_EXPLORE_MODEL_CALLS},
+        "stopped": stopped,
+    }
+    synthesis = {"starting_point": comparison["starting_point"], **comparison["synthesis"]}
+    return exploration, synthesis, comparison["synthesis"]["research_value"]
+
+
+def validate_archive_payload(value: Any) -> tuple[dict[str, Any], str]:
+    """Return the only JSON-safe fields permitted in a persisted research run."""
+
+    if not isinstance(value, dict) or not {"evidence", "analysis"}.issubset(value) or set(value) - {"evidence", "analysis", "exploration"}:
+        raise ArchiveError("invalid_archive", "JSON must contain evidence, analysis, and optional exploration only.")
+    try:
+        evidence = validate_evidence_record(value.get("evidence"))
+        analysis = validate_analysis_output(value.get("analysis"), evidence)
+    except AnalysisError as exc:
+        raise ArchiveError("invalid_archive", "The original evidence record or analysis is invalid.") from exc
+
+    exploration_value = value.get("exploration")
+    exploration = None
+    synthesis = None
+    research_value = None
+    exploration_performed = exploration_value is not None
+    if exploration_performed:
+        exploration, synthesis, research_value = validate_archivable_exploration(exploration_value, evidence, analysis)
+
+    storage = {
+        "starting_url": evidence["source"]["requested_url"],
+        "final_url": evidence["source"]["final_url"],
+        "title": evidence["content"]["title"],
+        "status": "archived",
+        "archive_decision": analysis["archive_recommendation"]["decision"],
+        "confidence": analysis["confidence"],
+        "research_value": research_value,
+        "exploration_performed": exploration_performed,
+        "original_evidence_json": _json_safe_copy(evidence),
+        "original_analysis_json": _json_safe_copy(analysis),
+        "exploration_json": _json_safe_copy(exploration),
+        "synthesis_json": _json_safe_copy(synthesis),
+    }
+    fingerprint_source = {
+        "evidence": storage["original_evidence_json"],
+        "analysis": storage["original_analysis_json"],
+        "exploration": storage["exploration_json"],
+        "synthesis": storage["synthesis_json"],
+    }
+    canonical = json.dumps(fingerprint_source, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return storage, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def archive_record_view(record: Any) -> dict[str, Any]:
+    """Rebuild the public, read-only archive view without exposing internal fields."""
+
+    evidence = _json_safe_copy(record.original_evidence_json)
+    analysis = _json_safe_copy(record.original_analysis_json)
+    exploration = _json_safe_copy(record.exploration_json)
+    synthesis = _json_safe_copy(record.synthesis_json)
+    visited_urls = []
+    if exploration:
+        visited_urls = [
+            item["url"] for item in exploration["explored"]
+            if item["retrieval"]["status"] == "success"
+        ]
+    return {
+        "public_id": record.public_id,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+        "starting_url": record.starting_url,
+        "final_url": record.final_url,
+        "source_domain": urlsplit(record.final_url).hostname or record.final_url,
+        "title": record.title,
+        "status": record.status,
+        "archive_decision": record.archive_decision,
+        "confidence": record.confidence,
+        "research_value": record.research_value,
+        "exploration_performed": record.exploration_performed,
+        "evidence": evidence,
+        "analysis": analysis,
+        "exploration": exploration,
+        "synthesis": synthesis,
+        "visited_urls": visited_urls,
+        "summary": analysis["summary"],
+    }
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -1028,6 +1315,22 @@ def index():
 @app.get("/data/<path:filename>")
 def data_file(filename: str):
     return send_from_directory(os.path.join(PROJECT_ROOT, "data"), filename)
+
+
+@app.get("/archive")
+def archive_index():
+    records = [archive_record_view(record) for record in list_research_runs()]
+    return render_template("archive_index.html", records=records)
+
+
+@app.get("/archive/<public_id>")
+def archive_detail(public_id: str):
+    if not re.fullmatch(r"CS-\d{8}-[A-F0-9]{6}", public_id):
+        abort(404)
+    record = get_research_run(public_id)
+    if record is None:
+        abort(404)
+    return render_template("archive_detail.html", record=archive_record_view(record))
 
 
 @app.post("/api/ingest")
@@ -1077,6 +1380,27 @@ def explore():
     return jsonify({"ok": status == 200, "expedition": result}), status
 
 
+@app.post("/api/archive")
+def archive_research_run():
+    if request.content_length is not None and request.content_length > MAX_ARCHIVE_REQUEST_BYTES:
+        raise ArchiveError("archive_too_large", "The archive record exceeds the size limit.", 413)
+    if not request.is_json:
+        raise ArchiveError("invalid_request", "Request body must be JSON.", 415)
+    payload = request.get_json(silent=True)
+    storage, fingerprint = validate_archive_payload(payload)
+    try:
+        record, duplicate = create_research_run(storage, fingerprint)
+    except SQLAlchemyError as exc:
+        app.logger.error("archive_failure category=database error=%s", type(exc).__name__)
+        raise ArchiveError("archive_unavailable", "The research archive is temporarily unavailable.", 503) from exc
+    return jsonify({
+        "ok": True,
+        "public_id": record.public_id,
+        "archive_url": f"/archive/{record.public_id}",
+        "duplicate": duplicate,
+    }), 200 if duplicate else 201
+
+
 @app.errorhandler(IngestError)
 def handle_ingest_error(error: IngestError):
     return jsonify({"ok": False, "error": {"code": error.code, "message": error.message}}), error.status
@@ -1093,6 +1417,13 @@ def handle_analysis_error(error: AnalysisError):
 def handle_exploration_error(error: ExplorationError):
     if error.code in {"invalid_model_output", "invented_candidate_url", "model_call_budget"}:
         app.logger.warning("exploration_failure category=%s", error.code)
+    return jsonify({"ok": False, "error": {"code": error.code, "message": error.message}}), error.status
+
+
+@app.errorhandler(ArchiveError)
+def handle_archive_error(error: ArchiveError):
+    if error.code in {"invalid_archive", "invalid_exploration", "mismatched_exploration"}:
+        app.logger.info("archive_rejected category=%s", error.code)
     return jsonify({"ok": False, "error": {"code": error.code, "message": error.message}}), error.status
 
 

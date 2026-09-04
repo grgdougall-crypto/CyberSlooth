@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse CyberSlooth's public research archive.">
+  <title>Research Archive — CyberSlooth</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#archive-list">Skip to archive records</a>
+  <header class="archive-header">
+    <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
+    <nav aria-label="Primary"><a href="{{ url_for('index') }}">New Expedition</a><strong>Stage 0.5 / Live</strong></nav>
+  </header>
+
+  <main>
+    <section class="archive-intro" aria-labelledby="archive-title">
+      <p class="kicker">Persistent field records</p>
+      <h1 id="archive-title">Research Archive</h1>
+      <p>Completed CyberSlooth records, preserved with their source evidence, model-generated interpretation, uncertainties, and exploration boundaries.</p>
+    </section>
+
+    <section class="archive-list" id="archive-list" aria-label="Archived research runs">
+      {% if records %}
+        <p class="record-count">{{ records|length }} archived record{% if records|length != 1 %}s{% endif %} · newest first</p>
+        <div class="archive-cards">
+          {% for record in records %}
+            <article class="archive-card">
+              <div class="card-number" aria-hidden="true">{{ "%02d"|format(loop.index) }}</div>
+              <div class="card-main">
+                <div class="card-meta">
+                  <time datetime="{{ record.created_at.isoformat() }}">{{ record.created_at.strftime("%B %d, %Y") }}</time>
+                  <span>{{ record.public_id }}</span>
+                </div>
+                <h2>{{ record.title }}</h2>
+                <p class="domain">{{ record.source_domain }}</p>
+                <p class="summary">{{ record.summary }}</p>
+              </div>
+              <dl class="card-status">
+                <div><dt>Archive decision</dt><dd>{{ record.archive_decision|upper }}</dd></div>
+                <div><dt>Confidence</dt><dd>{{ record.confidence|upper }}</dd></div>
+                <div><dt>Follow-up</dt><dd>{{ "EXPLORED" if record.exploration_performed else "NOT PERFORMED" }}</dd></div>
+              </dl>
+              <a class="open-record" href="{{ url_for('archive_detail', public_id=record.public_id) }}">Open Record <span aria-hidden="true">→</span></a>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="archive-empty">
+          <span aria-hidden="true">◇</span>
+          <h2>No research runs have been archived yet.</h2>
+          <p>Complete an evidence analysis, then explicitly archive the run.</p>
+          <a class="primary-link" href="{{ url_for('index') }}#live-source">Start a Research Run <span aria-hidden="true">→</span></a>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <footer><span>CyberSlooth</span><span>Public archive · Read only</span><a href="#archive-title">Return to top ↑</a></footer>
+</body>
+</html>
