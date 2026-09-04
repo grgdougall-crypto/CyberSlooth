@@ -56,6 +56,10 @@ def main() -> int:
         result = _orchestrator()()
     except Exception as exc:
         code = getattr(exc, "code", None)
+        if code == "run_blocked" and getattr(exc, "block_reason", None) == "already_completed_today":
+            print("CyberSlooth autonomous run skipped")
+            print("reason=already_completed_today")
+            return 0
         stage = getattr(exc, "failure_stage", None)
         if code == "run_blocked" and stage is None:
             stage = "idempotency"

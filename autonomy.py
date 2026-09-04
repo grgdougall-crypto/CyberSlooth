@@ -162,7 +162,9 @@ def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[s
     try:
         run = create_autonomous_run()
     except AutonomousRunConflict as exc:
-        raise AutonomyError("run_blocked", str(exc), 409) from exc
+        failure = AutonomyError("run_blocked", str(exc), 409)
+        failure.block_reason = exc.reason
+        raise failure from exc
 
     public_run_id = run.public_run_id
     pages_retrieved = 0

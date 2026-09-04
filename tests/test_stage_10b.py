@@ -89,7 +89,7 @@ class Stage10BScheduledExecutionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()["error"]["code"], "trigger_unavailable")
 
-    def test_duplicate_scheduled_invocation_creates_no_run_or_discovery(self):
+    def test_same_day_scheduled_invocation_is_successful_no_op(self):
         record = self.archive_record()
         run = archive_store.create_autonomous_run()
         published = archive_store.publish_daily_discovery(
@@ -116,11 +116,24 @@ class Stage10BScheduledExecutionTests(unittest.TestCase):
         with archive_store.database_session() as session:
             run_count = session.scalar(select(func.count()).select_from(archive_store.AutonomousRun))
             discovery_count = session.scalar(select(func.count()).select_from(archive_store.DailyDiscovery))
-        self.assertEqual(exit_code, 1)
-        self.assertIn("failure_stage=idempotency", output.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertIn("CyberSlooth autonomous run skipped", output.getvalue())
+        self.assertIn("reason=already_completed_today", output.getvalue())
+        self.assertNotIn("autonomous run failed", output.getvalue())
         self.assertEqual(run_count, 1)
         self.assertEqual(discovery_count, 1)
         self.assertEqual(archive_store.get_current_daily_discovery().id, published.id)
+
+    def test_active_run_block_remains_nonzero(self):
+        archive_store.create_autonomous_run()
+        output = io.StringIO()
+        with patch.object(
+            autonomous_run, "run_autonomous_expedition", side_effect=autonomy.run_autonomous_expedition,
+        ), redirect_stdout(output):
+            exit_code = autonomous_run.main()
+        self.assertEqual(exit_code, 1)
+        self.assertIn("CyberSlooth autonomous run failed", output.getvalue())
+        self.assertNotIn("reason=already_completed_today", output.getvalue())
 
     def test_railway_without_database_url_fails_closed(self):
         environment = os.environ.copy()

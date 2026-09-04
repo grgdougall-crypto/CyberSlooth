@@ -96,6 +96,10 @@ class DailyDiscovery(Base):
 class AutonomousRunConflict(RuntimeError):
     """A completed daily run or active run prevents a new autonomous run."""
 
+    def __init__(self, message: str, reason: str = "run_conflict") -> None:
+        super().__init__(message)
+        self.reason = reason
+
 
 _engine = None
 _session_factory: sessionmaker[Session] | None = None
@@ -316,7 +320,9 @@ def create_autonomous_run(now: datetime | None = None) -> AutonomousRun:
     try:
         with database_session() as session:
             if session.scalar(select(AutonomousRun.id).where(AutonomousRun.active_guard == "active")) is not None:
-                raise AutonomousRunConflict("An autonomous expedition is already running.")
+                raise AutonomousRunConflict(
+                    "An autonomous expedition is already running.", "active_run",
+                )
             if session.scalar(
                 select(AutonomousRun.id)
                 .where(AutonomousRun.status == "completed")
@@ -324,7 +330,10 @@ def create_autonomous_run(now: datetime | None = None) -> AutonomousRun:
                 .where(AutonomousRun.completed_at < day_end)
                 .limit(1)
             ) is not None:
-                raise AutonomousRunConflict("A completed autonomous expedition already exists for this UTC date.")
+                raise AutonomousRunConflict(
+                    "A completed autonomous expedition already exists for this UTC date.",
+                    "already_completed_today",
+                )
             public_run_id = _new_autonomous_public_id(started_at)
             for _ in range(5):
                 if session.scalar(select(AutonomousRun.id).where(AutonomousRun.public_run_id == public_run_id)) is None:
@@ -346,7 +355,9 @@ def create_autonomous_run(now: datetime | None = None) -> AutonomousRun:
             session.flush()
             return run
     except IntegrityError as exc:
-        raise AutonomousRunConflict("An autonomous expedition is already running.") from exc
+        raise AutonomousRunConflict(
+            "An autonomous expedition is already running.", "active_run",
+        ) from exc
 
 
 def set_autonomous_run_seed(
@@ -463,7 +474,9 @@ def publish_daily_discovery(
             session.flush()
             return discovery
     except IntegrityError as exc:
-        raise AutonomousRunConflict("A daily discovery already exists for this UTC date.") from exc
+        raise AutonomousRunConflict(
+            "A daily discovery already exists for this UTC date.", "daily_discovery_exists",
+        ) from exc
 
 
 def get_current_daily_discovery() -> DailyDiscovery | None:
