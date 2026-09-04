@@ -17,6 +17,10 @@ const liveRecord = document.querySelector('#live-record');
 const analyzeButton = document.querySelector('#analyze-button');
 const analysisStatus = document.querySelector('#analysis-status');
 const aiAnalysis = document.querySelector('#ai-analysis');
+const explorationLaunch = document.querySelector('#exploration-launch');
+const exploreButton = document.querySelector('#explore-button');
+const explorationStatus = document.querySelector('#exploration-status');
+const followUpExpedition = document.querySelector('#follow-up-expedition');
 
 let discoveries = [];
 let currentDiscovery = null;
@@ -24,6 +28,7 @@ let lastIndex = -1;
 let running = false;
 let runCounter = 0;
 let currentEvidence = null;
+let currentAnalysis = null;
 
 const stageMessages = [
   'Seed framed: early personal web culture.',
@@ -162,6 +167,7 @@ function setSourceLink(selector, value) {
 }
 
 function resetAnalysisState() {
+  currentAnalysis = null;
   aiAnalysis.hidden = true;
   document.querySelector('#no-analysis').hidden = false;
   analysisStatus.className = 'analysis-status';
@@ -169,6 +175,13 @@ function resetAnalysisState() {
   analyzeButton.disabled = false;
   analyzeButton.removeAttribute('aria-busy');
   analyzeButton.childNodes[0].textContent = 'Analyze Evidence ';
+  explorationLaunch.hidden = true;
+  followUpExpedition.hidden = true;
+  explorationStatus.className = 'exploration-status';
+  explorationStatus.textContent = '';
+  exploreButton.disabled = false;
+  exploreButton.removeAttribute('aria-busy');
+  exploreButton.childNodes[0].textContent = 'Explore Leads ';
 }
 
 function renderLiveEvidence(evidence) {
@@ -215,6 +228,7 @@ function appendAnalysisListItems(selector, values) {
 }
 
 function renderAnalysis(analysis) {
+  currentAnalysis = analysis;
   setText('#analysis-page-type', analysis.page_type);
   setText('#analysis-summary', analysis.summary);
   setText('#analysis-interest', analysis.why_interesting);
@@ -257,6 +271,121 @@ function renderAnalysis(analysis) {
   noFollowUps.hidden = analysis.candidate_follow_ups.length > 0;
   document.querySelector('#no-analysis').hidden = true;
   aiAnalysis.hidden = false;
+  explorationLaunch.hidden = !(currentEvidence && currentEvidence.links.candidates.length > 0);
+}
+
+function externalLink(url, label = url) {
+  const link = document.createElement('a');
+  link.textContent = label;
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer nofollow';
+  return link;
+}
+
+function detailSection(label, value) {
+  const section = document.createElement('section');
+  const heading = document.createElement('h5');
+  const copy = document.createElement('p');
+  heading.textContent = label;
+  copy.textContent = value;
+  section.append(heading, copy);
+  return section;
+}
+
+function provenanceItem(label, value) {
+  const item = document.createElement('div');
+  const heading = document.createElement('span');
+  const copy = document.createElement('strong');
+  heading.textContent = label;
+  copy.textContent = value;
+  item.append(heading, copy);
+  return item;
+}
+
+function renderFollowUp(item, index) {
+  const retrieved = item.retrieval.status === 'success';
+  const succeeded = retrieved && item.analysis_status.status === 'success';
+  const card = document.createElement('article');
+  card.className = `follow-up-card${succeeded ? '' : ' failed'}`;
+
+  const head = document.createElement('div');
+  head.className = 'follow-up-card-head';
+  const number = document.createElement('span');
+  number.className = 'follow-up-index';
+  number.textContent = String(index + 1).padStart(2, '0');
+  const identity = document.createElement('div');
+  const title = document.createElement('h4');
+  title.textContent = retrieved ? item.evidence.content.title : 'Follow-up unavailable';
+  identity.append(title, externalLink(item.url));
+  const status = document.createElement('span');
+  status.className = 'retrieval-status';
+  status.textContent = succeeded ? 'Retrieved + analyzed' : retrieved ? 'Analysis failed' : 'Retrieval failed';
+  head.append(number, identity, status);
+
+  const details = document.createElement('div');
+  details.className = 'follow-up-details';
+  details.append(
+    detailSection('Why selected', item.selection_reason),
+    detailSection('Short analysis', succeeded ? item.summary : retrieved ? item.analysis_status.error.message : item.retrieval.error.message),
+    detailSection('What it added', succeeded ? item.what_it_added : 'No evidence was added from this page.'),
+    detailSection('Confidence', succeeded ? item.confidence.toUpperCase() : 'NOT ASSESSED')
+  );
+  card.append(head, details);
+
+  if (retrieved) {
+    const { source, content, links } = item.evidence;
+    const provenance = document.createElement('div');
+    provenance.className = 'follow-up-provenance';
+    provenance.append(
+      provenanceItem('Requested URL', source.requested_url),
+      provenanceItem('Final URL', source.final_url),
+      provenanceItem('Retrieved', new Date(source.retrieved_at).toLocaleString()),
+      provenanceItem('HTTP status', String(source.status_code)),
+      provenanceItem('Content type', source.content_type),
+      provenanceItem('Candidate links', `${links.candidates.length} retained / unvisited`)
+    );
+    const excerpt = detailSection('Separated evidence excerpt', content.text_excerpt || 'No visible text was extracted.');
+    excerpt.className = 'follow-up-excerpt';
+    card.append(provenance, excerpt);
+  }
+  return card;
+}
+
+function renderSynthesis(expedition) {
+  const panel = document.querySelector('#research-synthesis');
+  if (!expedition.synthesis) {
+    panel.hidden = true;
+    return;
+  }
+  const synthesis = expedition.synthesis;
+  setText('#synthesis-starting-point', expedition.starting_point);
+  setText('#synthesis-changed', synthesis.what_changed);
+  appendAnalysisListItems('#synthesis-confirmed', synthesis.what_was_confirmed);
+  appendAnalysisListItems('#synthesis-uncertain', synthesis.what_remains_uncertain);
+  setText('#synthesis-value', synthesis.research_value.toUpperCase());
+
+  const nextLead = document.querySelector('#synthesis-next-lead');
+  nextLead.replaceChildren();
+  if (synthesis.best_next_lead.url) {
+    const label = document.createElement('p');
+    label.append(externalLink(synthesis.best_next_lead.url));
+    const reason = document.createElement('p');
+    reason.textContent = synthesis.best_next_lead.reason;
+    nextLead.append(label, reason);
+  } else {
+    const copy = document.createElement('p');
+    copy.textContent = synthesis.best_next_lead.reason;
+    nextLead.append(copy);
+  }
+  panel.hidden = false;
+}
+
+function renderExpedition(expedition) {
+  const list = document.querySelector('#follow-up-list');
+  list.replaceChildren(...expedition.explored.map(renderFollowUp));
+  renderSynthesis(expedition);
+  followUpExpedition.hidden = false;
 }
 
 sourceForm.addEventListener('submit', async event => {
@@ -299,6 +428,9 @@ analyzeButton.addEventListener('click', async () => {
   analysisStatus.className = 'analysis-status loading';
   analysisStatus.textContent = 'Analyzing only the supplied evidence…';
   aiAnalysis.hidden = true;
+  explorationLaunch.hidden = true;
+  followUpExpedition.hidden = true;
+  currentAnalysis = null;
 
   let completed = false;
   try {
@@ -324,6 +456,43 @@ analyzeButton.addEventListener('click', async () => {
   } finally {
     analyzeButton.removeAttribute('aria-busy');
     analyzeButton.disabled = completed;
+  }
+});
+
+exploreButton.addEventListener('click', async () => {
+  if (!currentEvidence || !currentAnalysis || currentEvidence.links.candidates.length === 0) return;
+  exploreButton.disabled = true;
+  exploreButton.setAttribute('aria-busy', 'true');
+  explorationStatus.className = 'exploration-status loading';
+  explorationStatus.textContent = 'Selecting and inspecting up to 2 follow-up pages…';
+  followUpExpedition.hidden = true;
+
+  let completed = false;
+  try {
+    const response = await fetch('/api/explore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ evidence: currentEvidence, analysis: currentAnalysis })
+    });
+    const payload = await response.json();
+    if (payload.expedition) {
+      renderExpedition(payload.expedition);
+      completed = true;
+      exploreButton.childNodes[0].textContent = 'Expedition Complete ';
+      explorationStatus.className = response.ok ? 'exploration-status success' : 'exploration-status error';
+      explorationStatus.textContent = response.ok
+        ? `Expedition stopped after ${payload.expedition.explored.length} selected follow-up page${payload.expedition.explored.length === 1 ? '' : 's'}.`
+        : payload.expedition.failure?.message || 'The expedition stopped safely with partial evidence.';
+      followUpExpedition.scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'start' });
+      return;
+    }
+    throw new Error(payload.error?.message || 'The follow-up expedition could not be completed safely.');
+  } catch (error) {
+    explorationStatus.className = 'exploration-status error';
+    explorationStatus.textContent = error.message;
+  } finally {
+    exploreButton.removeAttribute('aria-busy');
+    exploreButton.disabled = completed;
   }
 });
 

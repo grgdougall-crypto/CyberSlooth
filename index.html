@@ -19,7 +19,7 @@
     </a>
     <div class="header-meta">
       <span class="status-dot" aria-hidden="true"></span>
-      Stage 0.3 / Live
+      Stage 0.4 / Live
     </div>
   </header>
 
@@ -223,6 +223,37 @@
             </div>
             <p class="model-disclosure"><span aria-hidden="true">◇</span> Model-generated interpretation. Schema-constrained and application-validated; not independently verified.</p>
           </section>
+
+          <div class="exploration-launch" id="exploration-launch" hidden>
+            <div>
+              <p class="kicker">One-hop exploration</p>
+              <p>Rank only the original candidate links, inspect at most two pages, compare their evidence, then stop.</p>
+              <strong>MAX 2 FOLLOW-UP PAGES</strong>
+            </div>
+            <button class="button explore-button" id="explore-button" type="button">Explore Leads <span aria-hidden="true">↘</span></button>
+            <p class="exploration-status" id="exploration-status" role="status" aria-live="polite"></p>
+          </div>
+
+          <section class="follow-up-expedition" id="follow-up-expedition" aria-labelledby="follow-up-title" hidden>
+            <div class="follow-up-head">
+              <div><p class="kicker">Bounded research / One hop</p><h3 id="follow-up-title">Follow-up Expedition</h3></div>
+              <span>MAX 2 PAGES</span>
+            </div>
+            <div class="follow-up-list" id="follow-up-list"></div>
+            <section class="research-synthesis" id="research-synthesis" aria-labelledby="synthesis-title" hidden>
+              <p class="kicker">Compared evidence</p>
+              <h4 id="synthesis-title">Research Synthesis</h4>
+              <div class="synthesis-start"><span>Starting point</span><p id="synthesis-starting-point"></p></div>
+              <div class="synthesis-grid">
+                <section><h5>What changed</h5><p id="synthesis-changed"></p></section>
+                <section><h5>What was confirmed</h5><ul id="synthesis-confirmed"></ul></section>
+                <section><h5>What remains uncertain</h5><ul id="synthesis-uncertain"></ul></section>
+                <section><h5>Best next lead <span>Suggested only</span></h5><div id="synthesis-next-lead"></div></section>
+              </div>
+              <div class="research-value"><span>Research value</span><strong id="synthesis-value"></strong></div>
+            </section>
+            <div class="expedition-stop"><strong>Expedition Stopped</strong><span>Follow-up budget reached.</span></div>
+          </section>
         </article>
       </div>
     </section>
@@ -275,16 +306,16 @@
         <div class="status-grid">
           <div>
             <p class="kicker">Current Stage</p>
-            <h2 id="status-title">Evidence analysis prototype</h2>
-            <p>Deterministic retrieval followed by optional, bounded model analysis of one normalized evidence record.</p>
+            <h2 id="status-title">One-hop research prototype</h2>
+            <p>Deterministic retrieval, structured evidence analysis, and a provenance-preserving comparison of at most two follow-up pages.</p>
           </div>
           <div class="status-list implemented">
             <h3><span>✓</span> Implemented</h3>
-            <ul><li>Simulated expedition</li><li>Single public-page retrieval</li><li>Structured AI analysis</li><li>Output and candidate-URL validation</li></ul>
+            <ul><li>Deterministic safe retrieval</li><li>Structured AI evidence analysis</li><li>Bounded one-hop candidate exploration</li><li>Provenance-preserving comparison</li></ul>
           </div>
           <div class="status-list absent">
             <h3><span>×</span> Not implemented</h3>
-            <ul><li>Candidate-link exploration</li><li>Independent model browsing</li><li>Autonomous scheduling</li><li>Persistent database</li><li>Recursive crawling</li><li>Automatic publishing</li></ul>
+            <ul><li>Recursive crawling</li><li>Persistence / database</li><li>Autonomous scheduling</li><li>Daily publishing</li><li>Multi-hop research</li><li>Background jobs</li></ul>
           </div>
         </div>
       </div>
@@ -293,7 +324,7 @@
 
   <footer class="site-footer wrap">
     <span>CyberSlooth</span>
-    <span>Stage 0.3 · Evidence-bound analysis</span>
+    <span>Stage 0.4 · Bounded one-hop exploration</span>
     <a href="#top">Return to top ↑</a>
   </footer>
 

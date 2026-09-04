@@ -4,7 +4,9 @@ CyberSlooth is a planned public experiment in internet archaeology: autonomous r
 
 ## Prototype status
 
-Stage 0.3 preserves the simulated expedition and bounded public-URL retrieval, then adds optional AI-assisted analysis of one normalized evidence record. The model is limited to supplied evidence, receives no web tools, and returns a strict structured result that the application validates before display. CyberSlooth still does not follow candidate links, crawl recursively, schedule work, or persist records.
+Stage 0.4 preserves the simulated expedition, bounded public-URL retrieval, and evidence-only analysis, then adds one bounded exploration step. From one validated Stage 0.3 research record, the model may rank at most five original candidates and select no more than two. Application code retrieves those pages sequentially with the existing safety controls, analyzes each successful page separately, produces one comparison, and stops.
+
+Stage 0.4 is one-hop only. Links discovered in follow-up pages may be shown as a suggested future lead, but they are never fetched by the same request. There is no recursive crawling, persistence, scheduling, background work, or automatic publishing.
 
 ## Run locally
 
@@ -17,13 +19,17 @@ python app.py
 
 Then open `http://localhost:8000`.
 
-## Evidence and analysis pipeline
+## Evidence, analysis, and exploration pipeline
 
-Deterministic retrieval → normalized evidence → AI-assisted structured analysis → application validation → display.
+Deterministic retrieval → structured AI analysis → candidate ranking → max 2 safe follow-up fetches → bounded follow-up analysis → synthesis → **STOP**.
 
 `POST /api/ingest` accepts `{ "url": "https://example.com/page" }` and returns a normalized evidence object with immutable source metadata, extracted page content, and unvisited candidate links. `POST /api/analyze` accepts exactly that normalized object—not a raw prompt—and returns a compact analysis containing grounded observations, explicit uncertainties, optional candidate follow-ups, an archive recommendation, and confidence.
 
 Candidate links are never presented to the model as visited evidence. Any follow-up URL in the model output must exactly match a candidate from the supplied record, and the application rejects invented URLs.
+
+`POST /api/explore` accepts exactly `{ "evidence": normalizedEvidence, "analysis": validatedAnalysis }`; it does not accept a free-form prompt. The endpoint enforces a maximum of five original candidates, two selected pages, one hop, and four model calls: one selector, up to two follow-up analyses, and one synthesis. Every model call is tool-free and uses strict structured output. Follow-up retrieval reuses the same URL, DNS, private-address, redirect, timeout, response-size, content-type, and provenance controls as initial ingestion.
+
+Original and follow-up evidence remain separate. A failed follow-up is returned as an explicit failed expedition item without erasing the original or another successful follow-up. If every selected follow-up fails, the endpoint returns a bounded failure result and stops without retrying or substituting another link.
 
 ## Railway readiness
 
@@ -38,7 +44,6 @@ No Railway variables or resources are created by this project.
 
 ## Likely future stages
 
-- Stage 0.4 — bounded candidate-link exploration
 - Stage 0.5 — persistent research archive
 - Stage 1.0 — scheduled autonomous expedition
 
