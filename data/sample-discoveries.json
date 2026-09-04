@@ -1,0 +1,128 @@
+[
+  {
+    "title": "The Midnight Fern Index",
+    "type": "Personal homepage",
+    "era": "1997–2001",
+    "summary": "A hand-built catalog of night-blooming plants, annotated with field notes, tiny scanned sketches, and a visitor-maintained sightings ledger.",
+    "why_interesting": "It turns a modest personal obsession into a collaborative record—an unusually tender example of the web as a shared notebook.",
+    "source_type": "Simulated static homepage snapshot and directory listing",
+    "confidence": "High · 87%",
+    "follow_up": "Look for neighboring botanical pages referenced by the original sightings ledger.",
+    "archive_status": "Preserved / local",
+    "research_notes": "The page structure suggests several years of incremental hand editing. Repeated visual motifs link the index, guestbook, and field-note sections.",
+    "provenance": "Placeholder source CS-SIM-001; no live URL or external archive was consulted.",
+    "uncertainty": "The exact final update date and identity of several guest contributors remain unknown.",
+    "archived_timestamp": "2001-08-17 23:41 UTC · simulated",
+    "observations": [
+      {"action": "Candidate surfaced", "detail": "A small botanical index matched the expedition’s early-web culture seed."},
+      {"action": "Reference connected", "detail": "A sightings ledger pointed toward a wider circle of amateur field-note pages."},
+      {"action": "Relevance checked", "detail": "Hand-authored structure and community annotations made the trace distinct enough to keep."},
+      {"action": "Record preserved", "detail": "The finding was stored with simulated provenance and explicit uncertainty labels."}
+    ]
+  },
+  {
+    "title": "Patch Bay 95",
+    "type": "Software fan site",
+    "era": "1996–1999",
+    "summary": "An enthusiast’s illustrated guide to unofficial sound patches for a forgotten shareware music sequencer, complete with homemade compatibility tables.",
+    "why_interesting": "It documents the invisible maintenance work that kept niche software useful long after its official documentation stopped.",
+    "source_type": "Simulated mirror index and text-file bundle",
+    "confidence": "Medium-high · 79%",
+    "follow_up": "Trace the patch authors named in the compatibility table across related music-software circles.",
+    "archive_status": "Preserved / local",
+    "research_notes": "Version notes, checksums, and terse troubleshooting entries imply a volunteer support network centered on one fan-maintained page.",
+    "provenance": "Placeholder source CS-SIM-002; all names and resources are fictional.",
+    "uncertainty": "The size of the original user community and whether all listed patches were distributed are unknown.",
+    "archived_timestamp": "1999-03-04 18:12 UTC · simulated",
+    "observations": [
+      {"action": "Index detected", "detail": "A plain directory referenced patch notes for an obsolete music tool."},
+      {"action": "Bundle compared", "detail": "Matching version numbers connected three otherwise isolated text files."},
+      {"action": "Utility evaluated", "detail": "Compatibility details showed sustained community value beyond simple fandom."},
+      {"action": "Record preserved", "detail": "The simulated bundle was described without asserting real-world distribution."}
+    ]
+  },
+  {
+    "title": "Lantern Room Webring",
+    "type": "Archived web ring",
+    "era": "1998–2002",
+    "summary": "A small ring connecting personal pages devoted to lighthouses, fog signals, harbor folklore, and coastal weather logs.",
+    "why_interesting": "Its navigation fragments reveal how strangers once assembled a tiny, topic-shaped neighborhood without a central platform.",
+    "source_type": "Simulated ring fragment and reciprocal link map",
+    "confidence": "Medium · 73%",
+    "follow_up": "Reconstruct the likely ring order from reciprocal navigation fragments.",
+    "archive_status": "Partial / local",
+    "research_notes": "Five page fragments share the same previous, random, and next controls. Their inconsistent indexes suggest the ring changed repeatedly.",
+    "provenance": "Placeholder source CS-SIM-003; topology is a fictional demonstration.",
+    "uncertainty": "The complete membership list and final sequence cannot be recovered from the simulated fragments.",
+    "archived_timestamp": "2002-11-09 06:27 UTC · simulated",
+    "observations": [
+      {"action": "Fragment surfaced", "detail": "A lighthouse page retained an orphaned next-ring navigation control."},
+      {"action": "Neighbors mapped", "detail": "Repeated labels connected five pages into a likely topic-based ring."},
+      {"action": "Coverage assessed", "detail": "The surviving map was useful but incomplete, so confidence remained bounded."},
+      {"action": "Partial record kept", "detail": "Known nodes and missing links were stored separately."}
+    ]
+  },
+  {
+    "title": "The Copper Wire Society",
+    "type": "Defunct hobby community",
+    "era": "2000–2004",
+    "summary": "A compact message-board export where hobbyists exchanged plans for miniature crystal radios built from household scraps.",
+    "why_interesting": "The surviving build logs preserve a culture of practical teaching in which failed experiments were documented as carefully as successful ones.",
+    "source_type": "Simulated forum export and attachment manifest",
+    "confidence": "High · 84%",
+    "follow_up": "Compare the recurring circuit diagrams to determine which design branches spread through the group.",
+    "archive_status": "Preserved / local",
+    "research_notes": "Thread titles and attachment names form a chronological workshop record. Failure reports contain the richest explanatory detail.",
+    "provenance": "Placeholder source CS-SIM-004; posts and community are invented for the prototype.",
+    "uncertainty": "Missing attachments prevent confirmation of several later design revisions.",
+    "archived_timestamp": "2004-05-22 14:03 UTC · simulated",
+    "observations": [
+      {"action": "Export located", "detail": "A hobby-board index surfaced around an unusual household-radio project."},
+      {"action": "Threads grouped", "detail": "Attachment names connected scattered questions into recurring build experiments."},
+      {"action": "Research value tested", "detail": "Detailed failure logs distinguished the record from a simple project gallery."},
+      {"action": "Record preserved", "detail": "Available text and absent attachments were both noted in the archive."}
+    ]
+  },
+  {
+    "title": "Why Modems Whistle",
+    "type": "Technical FAQ",
+    "era": "1995–1998",
+    "summary": "A conversational FAQ that explains dial-up handshake sounds with musical metaphors, annotated waveform sketches, and answers to reader mail.",
+    "why_interesting": "It translated an intimidating technical ritual into a piece of shared everyday culture just as that sound was becoming commonplace.",
+    "source_type": "Simulated FAQ revisions and mail excerpt index",
+    "confidence": "Medium-high · 81%",
+    "follow_up": "Trace other technical explainers that used sound and metaphor to teach first-time internet users.",
+    "archive_status": "Preserved / local",
+    "research_notes": "Revision markers show the FAQ responding to recurring reader questions. Its teaching style is more culturally revealing than its technical content.",
+    "provenance": "Placeholder source CS-SIM-005; no technical claims should be treated as reference material.",
+    "uncertainty": "The accompanying audio examples and most original reader messages are not represented.",
+    "archived_timestamp": "1998-01-30 02:19 UTC · simulated",
+    "observations": [
+      {"action": "FAQ surfaced", "detail": "An unusually conversational title appeared in a simulated help-page index."},
+      {"action": "Revisions compared", "detail": "Reader-question markers showed the document evolving through public feedback."},
+      {"action": "Context evaluated", "detail": "The FAQ captured a familiar sound becoming part of early online life."},
+      {"action": "Record preserved", "detail": "Cultural value, absent audio, and simulated provenance were recorded."}
+    ]
+  },
+  {
+    "title": "Cloud Atlas for Classrooms",
+    "type": "Educational resource",
+    "era": "1999–2003",
+    "summary": "A teacher-built weather lesson in which students submitted small pixel drawings of clouds alongside handwritten observation transcripts.",
+    "why_interesting": "It shows an early classroom using the web not as a digital textbook, but as a shared wall for distributed observation.",
+    "source_type": "Simulated lesson pages and submission manifest",
+    "confidence": "Medium · 76%",
+    "follow_up": "Look for references to partner classrooms in the surviving lesson instructions.",
+    "archive_status": "Partial / local",
+    "research_notes": "A submission manifest implies multiple classrooms, while the surviving instructions emphasize comparing local conditions across distances.",
+    "provenance": "Placeholder source CS-SIM-006; schools, students, and submissions are fictional.",
+    "uncertainty": "Only a subset of the proposed classroom contributions is present in the simulation.",
+    "archived_timestamp": "2003-09-12 16:44 UTC · simulated",
+    "observations": [
+      {"action": "Lesson page found", "detail": "A weather exercise included links to student-made pixel observations."},
+      {"action": "Manifest followed", "detail": "Submission labels suggested contributions from more than one classroom."},
+      {"action": "Distinctiveness checked", "detail": "The distributed observation model made the lesson archive-worthy."},
+      {"action": "Partial record kept", "detail": "Surviving lesson structure and missing submissions were preserved separately."}
+    ]
+  }
+]

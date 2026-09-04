@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CyberSlooth is an interactive concept prototype for daily internet archaeology.">
+  <title>CyberSlooth — Internet archaeology, one day at a time.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23171916'/%3E%3Cpath d='M13 13h38v38H13z' fill='none' stroke='%2394a978' stroke-width='3'/%3E%3Ctext x='32' y='38' text-anchor='middle' fill='%23c0d29f' font-family='monospace' font-size='18' font-weight='700'%3ECS%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="static/css/styles.css">
+  <script src="static/js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#expedition">Skip to today's expedition</a>
+
+  <header class="site-header">
+    <a class="wordmark" href="#top" aria-label="CyberSlooth home">
+      <span class="wordmark-mark" aria-hidden="true">CS</span>
+      <span>CyberSlooth</span>
+    </a>
+    <div class="header-meta">
+      <span class="status-dot" aria-hidden="true"></span>
+      Stage 0.2 / Local
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>Field Note 001</span> <span>Prototype / Simulated Research</span></p>
+        <h1 id="hero-title">Internet archaeology,<br><em>one day at a time.</em></h1>
+        <p class="hero-intro">An experiment in autonomous research, daily discovery, and forgotten corners of the internet.</p>
+        <div class="hero-actions">
+          <button class="button button-primary" id="begin-button" type="button">
+            <span>Begin Today’s Expedition</span>
+            <span aria-hidden="true">↘</span>
+          </button>
+          <a class="text-link" href="#method">How it works <span aria-hidden="true">↓</span></a>
+        </div>
+      </div>
+
+      <aside class="signal-card" aria-label="Prototype field signal">
+        <div class="signal-card-head">
+          <span>Research Signal</span>
+          <span>SIM / 001</span>
+        </div>
+        <div class="signal-visual" aria-hidden="true">
+          <span class="orbit orbit-one"></span>
+          <span class="orbit orbit-two"></span>
+          <span class="sweep"></span>
+          <span class="signal-core"></span>
+          <i style="--x: 23%; --y: 33%"></i>
+          <i style="--x: 69%; --y: 26%"></i>
+          <i style="--x: 75%; --y: 71%"></i>
+          <i style="--x: 31%; --y: 78%"></i>
+        </div>
+        <p>Searching the quiet edges of the remembered web.</p>
+      </aside>
+    </section>
+
+    <section class="expedition-section" id="expedition" aria-labelledby="expedition-title">
+      <div class="wrap">
+        <div class="section-label"><span>01</span> Today’s Expedition</div>
+        <div class="expedition-grid">
+          <div class="assignment">
+            <p class="kicker">Research Assignment</p>
+            <h2 id="expedition-title">Find a forgotten piece of early web culture and trace what became of it.</h2>
+            <p class="simulation-note"><span aria-hidden="true">◆</span> This expedition uses a local, fictional dataset. No live research is performed.</p>
+          </div>
+          <dl class="run-specs">
+            <div><dt>Seed</dt><dd>Early personal web</dd></div>
+            <div><dt>Objective</dt><dd>One archive-worthy trace</dd></div>
+            <div><dt>Run status</dt><dd id="run-status"><span class="status-indicator"></span>Ready / simulated</dd></div>
+            <div><dt>Research depth</dt><dd>Bounded · 4 observations</dd></div>
+            <div><dt>Archive policy</dt><dd>Preserve uncertainty</dd></div>
+          </dl>
+        </div>
+
+        <div class="pipeline-panel" aria-labelledby="pipeline-title">
+          <div class="panel-heading">
+            <div>
+              <p class="kicker">Visible Research Pipeline</p>
+              <h3 id="pipeline-title">A bounded path from prompt to record</h3>
+            </div>
+            <span class="run-id" id="run-id">RUN —</span>
+          </div>
+          <ol class="pipeline" id="pipeline" aria-label="Expedition progress">
+            <li data-stage="seed"><span class="stage-number">01</span><strong>Seed</strong><small>Frame the territory</small></li>
+            <li data-stage="scout"><span class="stage-number">02</span><strong>Scout</strong><small>Surface a trace</small></li>
+            <li data-stage="follow"><span class="stage-number">03</span><strong>Follow lead</strong><small>Connect references</small></li>
+            <li data-stage="evaluate"><span class="stage-number">04</span><strong>Evaluate</strong><small>Test relevance</small></li>
+            <li data-stage="verify"><span class="stage-number">05</span><strong>Verify</strong><small>Mark uncertainty</small></li>
+            <li data-stage="archive"><span class="stage-number">06</span><strong>Archive</strong><small>Preserve the record</small></li>
+          </ol>
+          <div class="progress-track" aria-hidden="true"><span id="progress-bar"></span></div>
+          <p class="live-update" id="live-update" role="status" aria-live="polite">Awaiting expedition.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="results-section wrap" id="results" aria-labelledby="result-title" hidden>
+      <div class="section-label"><span>02</span> Expedition Record</div>
+      <div class="results-grid">
+        <div class="trail-column">
+          <p class="kicker">Research Trail</p>
+          <h2 id="trail-title">Observable actions,<br>not hidden reasoning.</h2>
+          <ol class="research-trail" id="research-trail" aria-labelledby="trail-title"></ol>
+        </div>
+
+        <article class="discovery-card" aria-labelledby="result-title">
+          <div class="discovery-topline">
+            <span id="result-type">Discovery</span>
+            <span class="kept-mark">Kept <span aria-hidden="true">✦</span></span>
+          </div>
+          <div class="artifact-glyph" aria-hidden="true">
+            <span class="glyph-window"><i></i><i></i><i></i></span>
+            <span class="glyph-title">WWW</span>
+            <span class="glyph-lines"></span>
+          </div>
+          <p class="result-era" id="result-era"></p>
+          <h2 id="result-title"></h2>
+          <p class="result-summary" id="result-summary"></p>
+          <div class="why-kept">
+            <span>Why CyberSlooth kept it</span>
+            <p id="result-why"></p>
+          </div>
+          <dl class="result-metrics">
+            <div><dt>Confidence</dt><dd id="result-confidence"></dd></div>
+            <div><dt>Trail</dt><dd id="result-trail-count">4 observations</dd></div>
+            <div><dt>Archive</dt><dd id="result-status"></dd></div>
+          </dl>
+          <button class="button button-dark" id="open-record" type="button">Open Archive Record <span aria-hidden="true">↗</span></button>
+        </article>
+      </div>
+      <button class="reset-button" id="reset-button" type="button"><span aria-hidden="true">↻</span> Run another simulated expedition</button>
+    </section>
+
+    <section class="live-source-section" id="live-source" aria-labelledby="live-source-title">
+      <div class="wrap">
+        <div class="section-label"><span>Live</span> Source / Experimental</div>
+        <div class="live-source-intro">
+          <div>
+            <p class="kicker live-kicker"><span class="live-pulse" aria-hidden="true"></span> Real Source Test</p>
+            <h2 id="live-source-title">Inspect one public page.</h2>
+            <p>Retrieve a bounded snapshot of visible text and links from one public HTTP or HTTPS source. This is evidence collection—not analysis.</p>
+          </div>
+          <form class="source-form" id="source-form">
+            <label for="source-url">Public source URL</label>
+            <div class="source-input-row">
+              <input id="source-url" name="url" type="url" maxlength="2048" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/page" required>
+              <button class="button live-button" id="inspect-button" type="submit">Inspect Source <span aria-hidden="true">↗</span></button>
+            </div>
+            <p class="input-note">One page · HTML or text only · 1 MB maximum · candidate links are not followed</p>
+            <p class="source-form-status" id="source-form-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+
+        <article class="live-record" id="live-record" aria-labelledby="live-record-title" hidden>
+          <div class="live-record-head">
+            <div>
+              <span class="live-badge"><span aria-hidden="true">●</span> Live Retrieval</span>
+              <p class="record-overline">Research Evidence / Unanalysed</p>
+              <h3 id="live-record-title"></h3>
+            </div>
+            <div class="http-stamp" aria-label="HTTP response status"><span>HTTP</span><strong id="live-status-code"></strong></div>
+          </div>
+          <div class="live-provenance">
+            <div><span>Requested source</span><a id="live-requested-url" target="_blank" rel="noopener noreferrer nofollow"></a></div>
+            <div><span>Final source</span><a id="live-final-url" target="_blank" rel="noopener noreferrer nofollow"></a></div>
+            <div><span>Retrieved</span><strong id="live-retrieved-at"></strong></div>
+            <div><span>Content type</span><strong id="live-content-type"></strong></div>
+          </div>
+          <div class="evidence-grid">
+            <section>
+              <p class="kicker">Extracted Evidence</p>
+              <p class="live-excerpt" id="live-excerpt"></p>
+              <p class="evidence-length" id="live-text-length"></p>
+            </section>
+            <section>
+              <div class="leads-heading"><p class="kicker">Candidate Leads</p><span id="live-links-count"></span></div>
+              <ul class="candidate-links" id="candidate-links"></ul>
+              <p class="empty-leads" id="empty-leads" hidden>No public HTTP or HTTPS links were extracted.</p>
+            </section>
+          </div>
+          <p class="no-analysis"><span aria-hidden="true">◇</span> No AI analysis has been performed yet.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="method-section" id="method" aria-labelledby="method-title">
+      <div class="wrap">
+        <div class="section-label"><span>03</span> Why This Exists</div>
+        <div class="method-grid">
+          <div>
+            <p class="kicker">The Larger Question</p>
+            <h2 id="method-title">The interesting challenge is not simply asking AI questions.</h2>
+          </div>
+          <div>
+            <p>CyberSlooth explores whether a constrained research system can:</p>
+            <ul class="question-list">
+              <li><span>01</span> Discover something without being directly told what to find</li>
+              <li><span>02</span> Follow promising leads</li>
+              <li><span>03</span> Preserve provenance</li>
+              <li><span>04</span> Distinguish observation from uncertainty</li>
+              <li><span>05</span> Build useful memory over time</li>
+            </ul>
+            <p class="caveat">These capabilities are the subject of the experiment—not claims about this prototype.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="guardrails-section wrap" aria-labelledby="guardrails-title">
+      <div class="section-label"><span>04</span> Guardrails / Future Model</div>
+      <h2 id="guardrails-title" class="visually-hidden">Future guardrails</h2>
+      <div class="guardrail-grid">
+        <article>
+          <p class="kicker positive">CyberSlooth may eventually</p>
+          <ul>
+            <li>Discover public pages</li><li>Follow links</li><li>Summarize findings</li><li>Rank interesting leads</li><li>Preserve research history</li>
+          </ul>
+        </article>
+        <article>
+          <p class="kicker negative">CyberSlooth should not</p>
+          <ul>
+            <li>Publish unsupported claims</li><li>Hide provenance</li><li>Treat speculation as fact</li><li>Crawl indefinitely</li><li>Silently modify archived findings</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="status-section" aria-labelledby="status-title">
+      <div class="wrap">
+        <div class="section-label"><span>05</span> Prototype Status</div>
+        <div class="status-grid">
+          <div>
+            <p class="kicker">Current Stage</p>
+            <h2 id="status-title">Public URL ingestion prototype</h2>
+            <p>A bounded live retrieval layer alongside the preserved local expedition simulation.</p>
+          </div>
+          <div class="status-list implemented">
+            <h3><span>✓</span> Implemented</h3>
+            <ul><li>Simulated expedition</li><li>Single public-page retrieval</li><li>URL and redirect safety checks</li><li>Evidence / provenance contract</li></ul>
+          </div>
+          <div class="status-list absent">
+            <h3><span>×</span> Not implemented</h3>
+            <ul><li>AI analysis or ranking</li><li>Candidate-link exploration</li><li>Autonomous scheduling</li><li>Persistent database</li><li>Recursive crawling</li><li>External model APIs</li></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer wrap">
+    <span>CyberSlooth</span>
+    <span>Stage 0.2 · Bounded live retrieval</span>
+    <a href="#top">Return to top ↑</a>
+  </footer>
+
+  <dialog class="archive-dialog" id="archive-dialog" aria-labelledby="archive-title">
+    <div class="dialog-shell">
+      <div class="dialog-header">
+        <div><p class="kicker">Local Archive / Record</p><h2 id="archive-title"></h2></div>
+        <button class="icon-button" id="close-record" type="button" aria-label="Close archive record">×</button>
+      </div>
+      <div class="simulated-banner"><span aria-hidden="true">◆</span> Simulated provenance — prototype data only</div>
+      <div class="record-grid">
+        <section><h3>Discovery summary</h3><p id="archive-summary"></p></section>
+        <section><h3>Research notes</h3><p id="archive-notes"></p></section>
+        <section><h3>Source / provenance</h3><p id="archive-source"></p></section>
+        <section><h3>What remains uncertain</h3><p id="archive-uncertain"></p></section>
+        <section><h3>Suggested next expedition</h3><p id="archive-followup"></p></section>
+      </div>
+      <dl class="archive-meta">
+        <div><dt>Confidence</dt><dd id="archive-confidence"></dd></div>
+        <div><dt>Archive state</dt><dd id="archive-status"></dd></div>
+        <div><dt>Timestamp</dt><dd id="archive-timestamp"></dd></div>
+      </dl>
+      <button class="button button-dark dialog-done" id="dialog-done" type="button">Return to expedition</button>
+    </div>
+  </dialog>
+</body>
+</html>
