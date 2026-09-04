@@ -5,13 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Browse CyberSlooth's public research archive.">
   <title>Research Archive — CyberSlooth</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23171916'/%3E%3Cpath d='M13 13h38v38H13z' fill='none' stroke='%2394a978' stroke-width='3'/%3E%3Ctext x='32' y='38' text-anchor='middle' fill='%23c0d29f' font-family='monospace' font-size='18' font-weight='700'%3ECS%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
+  <script src="{{ url_for('static', filename='js/archive.js') }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#archive-list">Skip to archive records</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('index') }}">New Expedition</a><strong>Stage 0.5 / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('index') }}">New Expedition</a><strong>Stage 0.6 / Live</strong></nav>
   </header>
 
   <main>
@@ -19,6 +21,42 @@
       <p class="kicker">Persistent field records</p>
       <h1 id="archive-title">Research Archive</h1>
       <p>Completed CyberSlooth records, preserved with their source evidence, model-generated interpretation, uncertainties, and exploration boundaries.</p>
+    </section>
+
+    <section class="daily-candidate" aria-labelledby="daily-title">
+      <div class="daily-heading">
+        <div>
+          <p class="kicker">Manual cross-run evaluation</p>
+          <h2 id="daily-title">Daily Candidate</h2>
+          <p>Compare up to the ten most recent records with one bounded evaluation. Selection marks a research candidate only; it does not publish or schedule anything.</p>
+        </div>
+        <button class="evaluate-button" id="evaluate-candidates" type="button">Evaluate Recent Discoveries <span aria-hidden="true">→</span></button>
+      </div>
+      <p class="evaluation-status" id="evaluation-status" role="status" aria-live="polite"></p>
+      <div id="daily-results" {% if not daily_candidate %}hidden{% endif %}>
+        <article class="candidate-winner" id="candidate-winner">
+          {% if daily_candidate %}
+          <div><span class="candidate-label">Daily Discovery Candidate</span><span>Rank 01 · {{ daily_candidate.daily_candidate_score }}/25</span></div>
+          <h3><a href="{{ url_for('archive_detail', public_id=daily_candidate.public_id) }}">{{ daily_candidate.title }}</a></h3>
+          <p class="candidate-id">{{ daily_candidate.public_id }} · {{ daily_candidate.archive_decision|upper }} · {{ daily_candidate.confidence|upper }} CONFIDENCE</p>
+          <p>Selected by the most recent completed bounded evaluation. Run the evaluation again to view fresh component scores and its concise model reason.</p>
+          <small>Evaluated {{ daily_candidate.daily_candidate_evaluated_at.strftime("%Y-%m-%d %H:%M UTC") }}</small>
+          <a class="open-record candidate-open" href="{{ url_for('archive_detail', public_id=daily_candidate.public_id) }}">Open Record <span aria-hidden="true">→</span></a>
+          {% endif %}
+        </article>
+        <div class="candidate-ranking">
+          <h3>Recent discovery ranking</h3>
+          <ol id="candidate-ranking-list">
+            {% for record in daily_ranking %}
+            <li><span>{{ "%02d"|format(record.daily_candidate_rank) }}</span><div><a href="{{ url_for('archive_detail', public_id=record.public_id) }}">{{ record.title }}</a><small>{{ record.public_id }} · persisted total</small></div><strong>{{ record.daily_candidate_score }}/25</strong></li>
+            {% endfor %}
+          </ol>
+        </div>
+      </div>
+      <div class="daily-empty" id="daily-empty" {% if daily_candidate %}hidden{% endif %}>
+        <span aria-hidden="true">◇</span>
+        <p>No daily candidate has been selected yet.</p>
+      </div>
     </section>
 
     <section class="archive-list" id="archive-list" aria-label="Archived research runs">

@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="CyberSlooth archived research record {{ record.public_id }}.">
   <title>{{ record.title }} — CyberSlooth Archive</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23171916'/%3E%3Cpath d='M13 13h38v38H13z' fill='none' stroke='%2394a978' stroke-width='3'/%3E%3Ctext x='32' y='38' text-anchor='middle' fill='%23c0d29f' font-family='monospace' font-size='18' font-weight='700'%3ECS%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/archive.css') }}">
 </head>
 <body>
   <a class="skip-link" href="#record">Skip to research record</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 0.5 / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 0.6 / Live</strong></nav>
   </header>
 
   <main class="record-page" id="record">
@@ -20,7 +21,7 @@
       <div class="record-id">{{ record.public_id }}</div>
       <h1>{{ record.title }}</h1>
       <p>{{ record.summary }}</p>
-      <div class="record-badges"><span>{{ record.archive_decision|upper }}</span><span>{{ record.confidence|upper }} CONFIDENCE</span><span>{{ "ONE-HOP EXPLORED" if record.exploration_performed else "ANALYSIS ONLY" }}</span></div>
+      <div class="record-badges">{% if record.daily_candidate_selected %}<span class="daily-badge">DAILY CANDIDATE</span>{% endif %}<span>{{ record.archive_decision|upper }}</span><span>{{ record.confidence|upper }} CONFIDENCE</span><span>{{ "ONE-HOP EXPLORED" if record.exploration_performed else "ANALYSIS ONLY" }}</span></div>
     </div>
 
     <section class="record-section" aria-labelledby="original-title">
