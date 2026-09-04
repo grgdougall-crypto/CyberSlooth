@@ -308,6 +308,8 @@ def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[s
                 model_calls_used=min(model_calls_used, MAX_AUTONOMOUS_MODEL_CALLS),
                 research_public_id=research_public_id,
             )
+            failure.public_run_id = public_run_id
+            failure.failure_stage = failed.failure_stage
             _transition(
                 log, public_run_id, "failed", category=failure.code,
                 pages_retrieved=failed.pages_retrieved, model_calls=failed.model_calls_used,

@@ -12,7 +12,7 @@
   <a class="skip-link" href="#today-content">Skip to today's discovery</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><a href="{{ url_for('status') }}">Run Status</a><strong>Stage 1.0A / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('archive_index') }}">Research Archive</a><a href="{{ url_for('status') }}">Run Status</a><strong>Stage 1.0B / Live</strong></nav>
   </header>
 
   <main id="today-content">
@@ -31,14 +31,14 @@
         <div><dt>Archive recommendation</dt><dd>{{ discovery.record.archive_decision|upper }}</dd></div>
         <div><dt>Follow-up exploration</dt><dd>{{ "PERFORMED" if discovery.record.exploration_performed else "NOT PERFORMED" }}</dd></div>
       </dl>
-      <p class="autonomy-note">CyberSlooth selected this result from a bounded autonomous research expedition initiated by an authorized manual trigger.</p>
+      <p class="autonomy-note">CyberSlooth selected this result from a bounded autonomous research expedition initiated by {{ "Railway's external schedule" if schedule.enabled else "an authorized manual trigger" }}.</p>
       <a class="open-record today-open" href="{{ url_for('archive_detail', public_id=discovery.record.public_id) }}">Open Full Archive Record <span aria-hidden="true">→</span></a>
     </article>
 
     <section class="run-boundaries" aria-labelledby="boundaries-title">
       <p class="kicker">Bounded autonomy</p>
       <h2 id="boundaries-title">Run boundaries</h2>
-      <ul><li>One starting seed</li><li>Maximum two follow-up pages</li><li>One-hop exploration</li><li>Provenance preserved</li><li>Expedition stopped after its budget was reached</li></ul>
+      <ul><li>One successful starting seed; maximum two approved seed attempts</li><li>No arbitrary fallback browsing</li><li>Maximum two follow-up pages</li><li>One-hop exploration</li><li>Provenance preserved</li><li>Expedition stopped after its budget was reached</li></ul>
     </section>
     {% else %}
     <section class="public-empty">
@@ -51,6 +51,6 @@
     {% endif %}
   </main>
 
-  <footer><span>CyberSlooth</span><span>Manual trigger · Bounded autonomous run</span><a href="{{ url_for('status') }}">View run status →</a></footer>
+  <footer><span>CyberSlooth</span><span>{{ "Railway scheduled" if schedule.enabled else "Manual trigger" }} · Bounded autonomous run</span><a href="{{ url_for('status') }}">View run status →</a></footer>
 </body>
 </html>

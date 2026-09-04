@@ -1,4 +1,4 @@
-"""CyberSlooth Stage 1.0A: one manually triggered bounded autonomous expedition."""
+"""CyberSlooth Stage 1.0B: one externally scheduled bounded daily expedition."""
 
 from __future__ import annotations
 
@@ -1520,6 +1520,20 @@ def daily_discovery_view(discovery: Any) -> dict[str, Any] | None:
     }
 
 
+def autonomy_schedule_view() -> dict[str, Any]:
+    """Return display-only Railway schedule metadata without interpreting it."""
+
+    enabled = os.environ.get("AUTONOMY_SCHEDULE_ENABLED", "").strip().lower() == "true"
+    raw_cron = os.environ.get("AUTONOMY_SCHEDULE_CRON", "").strip()
+    sanitized_cron = re.sub(r"[^A-Za-z0-9*?,/#LW\- ]", "?", raw_cron)[:120]
+    return {
+        "enabled": enabled,
+        "mode": "Scheduled" if enabled else "Manual trigger",
+        "cadence": "Daily" if enabled else None,
+        "cron": sanitized_cron or "Not provided",
+    }
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -1571,7 +1585,11 @@ def archive_detail(public_id: str):
 
 @app.get("/today")
 def today():
-    return render_template("today.html", discovery=daily_discovery_view(get_current_daily_discovery()))
+    return render_template(
+        "today.html",
+        discovery=daily_discovery_view(get_current_daily_discovery()),
+        schedule=autonomy_schedule_view(),
+    )
 
 
 @app.get("/status")
@@ -1590,7 +1608,7 @@ def status():
             "daily_discovery_public_id": run.daily_discovery_public_id,
             "failure_stage": run.failure_stage,
         }
-    return render_template("status.html", run=safe_run)
+    return render_template("status.html", run=safe_run, schedule=autonomy_schedule_view())
 
 
 @app.post("/api/ingest")

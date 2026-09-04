@@ -12,14 +12,24 @@
   <a class="skip-link" href="#status-content">Skip to run status</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.0A / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.0B / Live</strong></nav>
   </header>
 
   <main id="status-content">
     <section class="status-page">
       <p class="kicker">Read-only system status</p>
       <h1>Autonomous Run Status</h1>
-      <p>Stage 1.0A executes one bounded expedition after an authorized manual trigger. It is not scheduled.</p>
+      <p>Stage 1.0B keeps each expedition bounded and lets Railway own the external daily clock. Manual triggers remain available.</p>
+      <div class="schedule-status" aria-label="Autonomous schedule configuration">
+        <dl class="today-metadata schedule-metadata{% if not schedule.enabled %} manual{% endif %}">
+          <div><dt>Autonomous mode</dt><dd>{{ schedule.mode|upper }}</dd></div>
+          {% if schedule.enabled %}
+          <div><dt>Cadence</dt><dd>{{ schedule.cadence|upper }}</dd></div>
+          <div><dt>Schedule</dt><dd>{{ schedule.cron }}</dd></div>
+          {% endif %}
+        </dl>
+        <p>This is informational only. Railway triggers the short-lived process; CyberSlooth does not run an internal scheduler.</p>
+      </div>
       {% if run %}
       <div class="run-status-card">
         <div class="run-status-heading"><span>{{ run.public_run_id }}</span><strong class="run-state {{ run.status }}">{{ run.status|upper }}</strong></div>
@@ -37,7 +47,7 @@
         </div>
       </div>
       {% else %}
-      <div class="public-empty compact-empty"><span aria-hidden="true">◇</span><h2>No autonomous run has been recorded yet.</h2><p>The manual research and archive tools remain available.</p></div>
+      <div class="public-empty compact-empty"><span aria-hidden="true">◇</span><h2>No autonomous run has been recorded yet.</h2><p>The scheduled and manual research triggers use the same bounded orchestrator.</p></div>
       {% endif %}
     </section>
   </main>
