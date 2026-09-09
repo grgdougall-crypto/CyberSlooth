@@ -74,6 +74,23 @@ class Stage10BScheduledExecutionTests(unittest.TestCase):
         self.assertIn("CyberSlooth autonomous run failed", output.getvalue())
         self.assertIn("failure_stage=retrieval", output.getvalue())
 
+    def test_cli_no_eligible_discovery_is_successful_completion(self):
+        result = {
+            **self.completed_result(),
+            "daily_discovery_public_id": None,
+            "outcome": "no_eligible_discovery",
+        }
+        output = io.StringIO()
+        with patch.object(
+            autonomous_run, "run_autonomous_expedition", return_value=result,
+        ), redirect_stdout(output):
+            exit_code = autonomous_run.main()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("CyberSlooth autonomous run completed", output.getvalue())
+        self.assertIn("outcome=no_eligible_discovery", output.getvalue())
+        self.assertNotIn("daily_discovery_id=", output.getvalue())
+        self.assertNotIn("autonomous run failed", output.getvalue())
+
     def test_cli_does_not_require_http_trigger_token(self):
         output = io.StringIO()
         with patch.dict(os.environ, {}, clear=True), patch.object(

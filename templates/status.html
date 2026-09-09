@@ -12,14 +12,14 @@
   <a class="skip-link" href="#status-content">Skip to run status</a>
   <header class="archive-header">
     <a class="wordmark" href="{{ url_for('index') }}" aria-label="CyberSlooth home"><span aria-hidden="true">CS</span>CyberSlooth</a>
-    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.0B / Live</strong></nav>
+    <nav aria-label="Primary"><a href="{{ url_for('today') }}">Today's Discovery</a><a href="{{ url_for('archive_index') }}">Research Archive</a><strong>Stage 1.1 / Live</strong></nav>
   </header>
 
   <main id="status-content">
     <section class="status-page">
       <p class="kicker">Read-only system status</p>
       <h1>Autonomous Run Status</h1>
-      <p>Stage 1.0B keeps each expedition bounded and lets Railway own the external daily clock. Manual triggers remain available.</p>
+      <p>Stage 1.1 keeps each expedition bounded, applies deterministic publication novelty, and lets Railway own the external daily clock. Manual triggers remain available.</p>
       <div class="schedule-status" aria-label="Autonomous schedule configuration">
         <dl class="today-metadata schedule-metadata{% if not schedule.enabled %} manual{% endif %}">
           <div><dt>Autonomous mode</dt><dd>{{ schedule.mode|upper }}</dd></div>
@@ -39,6 +39,7 @@
           <div><dt>Pages retrieved</dt><dd>{{ run.pages_retrieved }}</dd></div>
           <div><dt>Model calls</dt><dd>{{ run.model_calls_used }} / 6 MAX</dd></div>
           <div><dt>Discovery published</dt><dd>{{ "YES" if run.daily_discovery_public_id else "NO" }}</dd></div>
+          <div><dt>Outcome</dt><dd>{{ (run.outcome or "IN PROGRESS")|upper }}</dd></div>
           <div><dt>Failure stage</dt><dd>{{ run.failure_stage|upper if run.failure_stage else "NONE" }}</dd></div>
         </dl>
         <div class="status-links">

@@ -91,6 +91,8 @@ def main() -> int:
             print(f"{label}={value}")
     print(f"pages_retrieved={_bounded_counter(result.get('pages_retrieved'), 3)}")
     print(f"model_calls={_bounded_counter(result.get('model_calls_used'), 6)}")
+    outcome = _safe_label(result.get("outcome"), "discovery_published")
+    print(f"outcome={outcome}")
     return 0
 
 

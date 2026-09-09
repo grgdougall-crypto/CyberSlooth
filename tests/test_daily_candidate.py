@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -21,7 +22,6 @@ from test_explore import evidence_record, valid_analysis
 SCORE_FIELDS = {
     "research_value_score": 3,
     "evidence_quality_score": 3,
-    "novelty_score": 3,
     "interestingness_score": 3,
     "uncertainty_penalty": 1,
     "archive_quality_score": 3,
@@ -69,6 +69,16 @@ class DailyCandidateTests(unittest.TestCase):
             self.assertEqual(response.status_code, 201)
             public_ids.append(response.get_json()["public_id"])
         return public_ids
+
+    def archive_url(self, url, title):
+        evidence = copy.deepcopy(evidence_record())
+        analysis = copy.deepcopy(valid_analysis())
+        evidence["source"]["requested_url"] = url
+        evidence["source"]["final_url"] = url
+        evidence["content"]["title"] = title
+        analysis["summary"] = f"Stored summary for {title}."
+        storage, fingerprint = cyberslooth.validate_archive_payload({"evidence": evidence, "analysis": analysis})
+        return archive_store.create_research_run(storage, fingerprint)[0]
 
     def provider_for(self, output):
         provider = MagicMock()
@@ -119,7 +129,7 @@ class DailyCandidateTests(unittest.TestCase):
 
     def test_out_of_range_score_is_rejected(self):
         ids = [record.public_id for record in self._recent_two()]
-        output = scoring_output(ids, {ids[0]: {"novelty_score": 6}})
+        output = scoring_output(ids, {ids[0]: {"evidence_quality_score": 6}})
         response, _ = self.select_with(output)
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.get_json()["error"]["code"], "score_out_of_range")
@@ -127,14 +137,15 @@ class DailyCandidateTests(unittest.TestCase):
     def test_total_score_is_recomputed_server_side(self):
         ids = [record.public_id for record in self._recent_two()]
         response, _ = self.select_with(scoring_output(ids))
-        self.assertEqual(response.get_json()["ranked"][0]["total_score"], 14)
+        self.assertEqual(response.get_json()["ranked"][0]["total_score"], 16)
+        self.assertEqual(response.get_json()["ranked"][0]["novelty_score"], 5)
 
     def test_tie_break_prefers_evidence_then_research_value(self):
         records = self._recent_two()
         newer, older = records[0].public_id, records[1].public_id
         overrides = {
-            newer: {"research_value_score": 4, "evidence_quality_score": 3, "novelty_score": 0, "interestingness_score": 0, "archive_quality_score": 3, "uncertainty_penalty": 0},
-            older: {"research_value_score": 1, "evidence_quality_score": 5, "novelty_score": 0, "interestingness_score": 0, "archive_quality_score": 4, "uncertainty_penalty": 0},
+            newer: {"research_value_score": 4, "evidence_quality_score": 3, "interestingness_score": 0, "archive_quality_score": 3, "uncertainty_penalty": 0},
+            older: {"research_value_score": 1, "evidence_quality_score": 5, "interestingness_score": 0, "archive_quality_score": 4, "uncertainty_penalty": 0},
         }
         response, _ = self.select_with(scoring_output([newer, older], overrides))
         self.assertEqual(response.get_json()["selected_public_id"], older)
@@ -207,6 +218,23 @@ class DailyCandidateTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(provider.responses.create.call_count, 1)
 
+    def test_model_novelty_field_is_rejected_and_cannot_affect_score(self):
+        ids = [record.public_id for record in self._recent_two()]
+        output = scoring_output(ids)
+        output["candidates"][0]["novelty_score"] = 0
+        response, _ = self.select_with(output)
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json()["error"]["code"], "invalid_model_output")
+
+    def test_scoring_contract_excludes_model_novelty(self):
+        ids = [record.public_id for record in self._recent_two()]
+        response, provider = self.select_with(scoring_output(ids))
+        self.assertEqual(response.status_code, 200)
+        schema = provider.responses.create.call_args.kwargs["text"]["format"]["schema"]
+        properties = schema["properties"]["candidates"]["items"]["properties"]
+        self.assertNotIn("novelty_score", properties)
+        self.assertNotIn("novelty_score", provider.responses.create.call_args.kwargs["input"])
+
     def test_arbitrary_browser_candidate_json_is_rejected_without_model_call(self):
         self.archive_many(2)
         with patch.object(cyberslooth, "create_openai_client") as create_client:
@@ -271,6 +299,144 @@ class DailyCandidateTests(unittest.TestCase):
             "daily_candidate_evaluated_at",
         }.issubset(columns))
         archive_store._engine.dispose()
+
+    def test_canonical_url_equivalence_is_conservative(self):
+        first = cyberslooth.canonicalize_publication_url("HTTPS://Example.COM:443#section")
+        second = cyberslooth.canonicalize_publication_url("https://example.com/")
+        self.assertEqual(first, second)
+        self.assertNotEqual(
+            cyberslooth.canonicalize_publication_url("https://example.com/resource"),
+            cyberslooth.canonicalize_publication_url("https://example.com/resource/"),
+        )
+
+    def test_recent_exact_url_is_ineligible_but_archive_is_preserved(self):
+        now = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+        record = self.archive_url("https://example.com/source", "Repeated source")
+        eligible, scores, excluded = cyberslooth.apply_publication_novelty(
+            [record],
+            [{"published_at": now - timedelta(days=1), "final_url": "HTTPS://EXAMPLE.COM:443/source#top"}],
+            now,
+        )
+        self.assertEqual(eligible, [])
+        self.assertEqual(scores, {})
+        self.assertEqual(excluded, [record.public_id])
+        self.assertIsNotNone(archive_store.get_research_run(record.public_id))
+
+    def test_domain_novelty_scores_are_deterministic(self):
+        now = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+        records = [
+            SimpleNamespace(public_id="CS-NEW", final_url="https://new.example/item"),
+            SimpleNamespace(public_id="CS-MID", final_url="https://mid.example/new-item"),
+            SimpleNamespace(public_id="CS-RECENT", final_url="https://recent.example/new-item"),
+        ]
+        history = [
+            {"published_at": now - timedelta(days=10), "final_url": "https://mid.example/old-item"},
+            {"published_at": now - timedelta(days=3), "final_url": "https://recent.example/old-item"},
+        ]
+        first = cyberslooth.apply_publication_novelty(records, history, now)
+        second = cyberslooth.apply_publication_novelty(records, history, now)
+        self.assertEqual(first, second)
+        self.assertEqual(first[1], {"CS-NEW": 5, "CS-MID": 2, "CS-RECENT": 0})
+
+    def test_different_url_on_recent_domain_remains_eligible(self):
+        now = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+        record = SimpleNamespace(public_id="CS-DIFFERENT", final_url="https://example.com/new")
+        eligible, scores, excluded = cyberslooth.apply_publication_novelty(
+            [record],
+            [{"published_at": now - timedelta(days=2), "final_url": "https://example.com/old"}],
+            now,
+        )
+        self.assertEqual(eligible, [record])
+        self.assertEqual(scores[record.public_id], 0)
+        self.assertEqual(excluded, [])
+
+    def test_exact_source_outside_cooldown_is_eligible_again(self):
+        now = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+        record = SimpleNamespace(public_id="CS-RETURN", final_url="https://example.com/source")
+        eligible, scores, _ = cyberslooth.apply_publication_novelty(
+            [record],
+            [{"published_at": now - timedelta(days=31), "final_url": "https://example.com/source"}],
+            now,
+        )
+        self.assertEqual(eligible, [record])
+        self.assertEqual(scores[record.public_id], 5)
+
+    def test_previously_published_record_cannot_win_again(self):
+        published = self.archive_url("https://published.example/source", "Published")
+        fresh = self.archive_url("https://fresh.example/source", "Fresh")
+        archive_store.publish_daily_discovery(
+            research_public_id=published.public_id,
+            source_autonomous_run_id="AR-20260908-ABCDEF",
+            selection_reason="Previously selected.",
+            selected_score=20,
+            published_at=datetime.now(timezone.utc) - timedelta(days=1),
+        )
+        response, provider = self.select_with(scoring_output([fresh.public_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["selected_public_id"], fresh.public_id)
+        model_input = json.loads(provider.responses.create.call_args.kwargs["input"])
+        self.assertEqual([item["public_id"] for item in model_input["records"]], [fresh.public_id])
+
+    def test_deterministic_novelty_changes_final_ranking(self):
+        published = self.archive_url("https://recent.example/old", "Published")
+        same_domain = self.archive_url("https://recent.example/new", "Same domain")
+        novel_domain = self.archive_url("https://novel.example/new", "Novel domain")
+        archive_store.publish_daily_discovery(
+            research_public_id=published.public_id,
+            source_autonomous_run_id="AR-20260908-ABCDEF",
+            selection_reason="Previously selected.",
+            selected_score=20,
+            published_at=datetime.now(timezone.utc) - timedelta(days=1),
+        )
+        output = scoring_output(
+            [same_domain.public_id, novel_domain.public_id],
+            selected=same_domain.public_id,
+        )
+        response, _ = self.select_with(output)
+        ranked = response.get_json()["ranked"]
+        self.assertEqual(response.get_json()["selected_public_id"], novel_domain.public_id)
+        self.assertEqual(
+            {item["public_id"]: item["novelty_score"] for item in ranked},
+            {same_domain.public_id: 0, novel_domain.public_id: 5},
+        )
+
+    def test_publication_history_query_is_bounded_by_time(self):
+        recent = self.archive_url("https://recent.example/source", "Recent")
+        old = self.archive_url("https://old.example/source", "Old")
+        now = datetime.now(timezone.utc)
+        archive_store.publish_daily_discovery(
+            research_public_id=recent.public_id,
+            source_autonomous_run_id="AR-20260908-ABCDEF",
+            selection_reason="Recent.", selected_score=20,
+            published_at=now - timedelta(days=5),
+        )
+        archive_store.publish_daily_discovery(
+            research_public_id=old.public_id,
+            source_autonomous_run_id="AR-20260730-ABCDEF",
+            selection_reason="Old.", selected_score=20,
+            published_at=now - timedelta(days=40),
+        )
+        history = archive_store.list_recent_daily_discovery_history(now - timedelta(days=30))
+        self.assertEqual([item["research_public_id"] for item in history], [recent.public_id])
+        self.assertEqual(history[0]["final_url"], "https://recent.example/source")
+
+    def test_no_eligible_discovery_skips_model_and_clears_candidate(self):
+        first = self.archive_url("https://example.com/", "First repeat")
+        self.archive_url("HTTPS://EXAMPLE.COM:443#again", "Second repeat")
+        archive_store.publish_daily_discovery(
+            research_public_id=first.public_id,
+            source_autonomous_run_id="AR-20260908-ABCDEF",
+            selection_reason="Previously selected.",
+            selected_score=20,
+            published_at=datetime.now(timezone.utc) - timedelta(days=1),
+        )
+        with patch.object(cyberslooth, "create_openai_client") as create_client:
+            response = self.client.post("/api/select-daily-candidate")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["outcome"], "no_eligible_discovery")
+        self.assertIsNone(response.get_json()["selected_public_id"])
+        create_client.assert_not_called()
+        self.assertIsNone(archive_store.get_current_daily_candidate())
 
     def _recent_two(self):
         self.archive_many(2)

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,6 +176,18 @@ class ArchiveTests(unittest.TestCase):
                 archive_store.configured_database_url(),
                 "postgresql+psycopg://user:pass@example/db",
             )
+
+    def test_stage_11_outcome_column_is_added_to_existing_autonomous_table(self):
+        legacy_path = Path(self.temp.name) / "legacy-stage-10b.db"
+        connection = sqlite3.connect(legacy_path)
+        try:
+            connection.execute("CREATE TABLE autonomous_runs (id INTEGER PRIMARY KEY)")
+            connection.commit()
+        finally:
+            connection.close()
+        archive_store.configure_database("sqlite:///" + legacy_path.as_posix())
+        columns = {column["name"] for column in inspect(archive_store._engine).get_columns("autonomous_runs")}
+        self.assertIn("outcome_code", columns)
 
     def test_untrusted_secret_metadata_is_not_persisted_or_echoed(self):
         secret = "SECRET_DO_NOT_STORE"

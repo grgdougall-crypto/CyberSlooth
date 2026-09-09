@@ -1,4 +1,4 @@
-"""Small SQLAlchemy persistence layer for CyberSlooth Stage 1.0A."""
+"""Small SQLAlchemy persistence layer for CyberSlooth Stage 1.1."""
 
 from __future__ import annotations
 
@@ -76,6 +76,7 @@ class AutonomousRun(Base):
     model_calls_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
     failure_message_safe: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    outcome_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     active_guard: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
@@ -136,6 +137,7 @@ def configure_database(url: str | None = None) -> str:
     Base.metadata.create_all(_engine)
     _ensure_stage_06_columns()
     _ensure_stage_10a_reliability_columns()
+    _ensure_stage_11_novelty_columns()
     if _engine.dialect.name == "sqlite":
         with _engine.begin() as connection:
             connection.execute(text("PRAGMA optimize"))
@@ -180,6 +182,17 @@ def _ensure_stage_10a_reliability_columns() -> None:
             connection.execute(text(
                 "ALTER TABLE autonomous_runs ADD COLUMN seed_attempts INTEGER NOT NULL DEFAULT 0"
             ))
+
+
+def _ensure_stage_11_novelty_columns() -> None:
+    """Add the safe completion outcome used when publication has no eligible record."""
+
+    if _engine is None:
+        raise RuntimeError("The archive database is not initialized.")
+    existing = {column["name"] for column in inspect(_engine).get_columns("autonomous_runs")}
+    if "outcome_code" not in existing:
+        with _engine.begin() as connection:
+            connection.execute(text("ALTER TABLE autonomous_runs ADD COLUMN outcome_code VARCHAR(32)"))
 
 
 @contextmanager
@@ -248,6 +261,34 @@ def list_recent_research_runs(limit: int = 10) -> list[ResearchRun]:
             .order_by(ResearchRun.created_at.desc(), ResearchRun.id.desc())
             .limit(bounded_limit)
         ))
+
+
+def list_recent_daily_discovery_history(
+    since: datetime, *, limit: int = 31,
+) -> list[dict[str, Any]]:
+    """Return a bounded, database-filtered publication history for novelty checks."""
+
+    bounded_limit = max(0, min(int(limit), 31))
+    with database_session() as session:
+        rows = session.execute(
+            select(
+                DailyDiscovery.research_run_public_id,
+                DailyDiscovery.published_at,
+                ResearchRun.final_url,
+            )
+            .join(ResearchRun, ResearchRun.public_id == DailyDiscovery.research_run_public_id)
+            .where(DailyDiscovery.published_at >= since)
+            .order_by(DailyDiscovery.published_at.desc(), DailyDiscovery.id.desc())
+            .limit(bounded_limit)
+        ).all()
+        return [
+            {
+                "research_public_id": public_id,
+                "published_at": published_at,
+                "final_url": final_url,
+            }
+            for public_id, published_at, final_url in rows
+        ]
 
 
 def persist_daily_candidate_evaluation(
@@ -402,8 +443,9 @@ def autonomous_seed_last_used(seed_ids: list[str]) -> dict[str, datetime]:
 
 
 def complete_autonomous_run(
-    public_run_id: str, *, research_public_id: str, daily_discovery_public_id: str,
-    pages_retrieved: int, model_calls_used: int, completed_at: datetime | None = None,
+    public_run_id: str, *, research_public_id: str, daily_discovery_public_id: str | None,
+    pages_retrieved: int, model_calls_used: int, outcome_code: str = "discovery_published",
+    completed_at: datetime | None = None,
 ) -> AutonomousRun:
     finished = completed_at or datetime.now(timezone.utc)
     with database_session() as session:
@@ -416,6 +458,7 @@ def complete_autonomous_run(
         run.daily_discovery_public_id = daily_discovery_public_id
         run.pages_retrieved = pages_retrieved
         run.model_calls_used = model_calls_used
+        run.outcome_code = outcome_code[:32]
         run.active_guard = None
         session.flush()
         return run

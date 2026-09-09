@@ -89,27 +89,30 @@ class AutonomyTests(unittest.TestCase):
         archive_store.configure_database("sqlite:///" + archive_store.LOCAL_DATABASE_PATH.as_posix())
         self.temp.cleanup()
 
-    def archive_record(self, title="Prior archive"):
+    def archive_record(self, title="Prior archive", url="https://example.com/"):
         evidence = copy.deepcopy(evidence_record(candidates=[]))
         analysis = copy.deepcopy(valid_analysis(candidates=[]))
+        evidence["source"]["requested_url"] = url
+        evidence["source"]["final_url"] = url
         evidence["content"]["title"] = title
         analysis["summary"] = f"Stored summary for {title}."
         storage, fingerprint = cyberslooth.validate_archive_payload({"evidence": evidence, "analysis": analysis})
         return archive_store.create_research_run(storage, fingerprint)[0]
 
     @staticmethod
-    def fake_scores(records):
+    def fake_scores(records, novelty_scores):
         ranked = []
         for rank, record in enumerate(records, 1):
+            novelty = novelty_scores[record.public_id]
             ranked.append({
                 "public_id": record.public_id,
                 "research_value_score": 5,
                 "evidence_quality_score": 5,
-                "novelty_score": 4,
+                "novelty_score": novelty,
                 "interestingness_score": 4,
                 "uncertainty_penalty": rank - 1,
                 "archive_quality_score": 4,
-                "total_score": 22 - (rank - 1),
+                "total_score": 18 + novelty - (rank - 1),
                 "reason": f"Bounded rank {rank}.",
                 "rank": rank,
             })
@@ -202,8 +205,50 @@ class AutonomyTests(unittest.TestCase):
     def test_successful_mocked_full_run_completes(self):
         result = self.run_mocked()
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["outcome"], "discovery_published")
         self.assertIsNotNone(result["research_public_id"])
         self.assertIsNotNone(result["daily_discovery_public_id"])
+
+    def test_stage_11_preserves_existing_expedition_budgets(self):
+        self.assertEqual(autonomy.MAX_STARTING_SEED_ATTEMPTS, 2)
+        self.assertEqual(autonomy.MAX_AUTONOMOUS_MODEL_CALLS, 6)
+        self.assertEqual(cyberslooth.MAX_CANDIDATE_LINKS, 10)
+        self.assertEqual(cyberslooth.MAX_FOLLOW_UPS, 2)
+        self.assertEqual(cyberslooth.MAX_EXPLORE_MODEL_CALLS, 4)
+
+    def test_no_eligible_discovery_completes_without_publication_or_scoring_call(self):
+        prior = self.archive_record("Previously published")
+        published_at = datetime.now(timezone.utc) - timedelta(days=1)
+        archive_store.publish_daily_discovery(
+            research_public_id=prior.public_id,
+            source_autonomous_run_id="AR-20260908-ABCDEF",
+            selection_reason="Previously selected.",
+            selected_score=20,
+            published_at=published_at,
+        )
+        original_analysis = valid_analysis(candidates=[])
+
+        def fake_analysis(_evidence, budget):
+            budget.consume()
+            return copy.deepcopy(original_analysis)
+
+        with patch.object(autonomy, "load_seed_pool", return_value=[self.seed]), patch.object(
+            autonomy.cyberslooth, "fetch_public_page", return_value=starting_fetch(),
+        ), patch.object(
+            autonomy.cyberslooth, "analyze_evidence", side_effect=fake_analysis,
+        ), patch.object(autonomy.cyberslooth, "score_daily_candidates") as score_mock:
+            result = autonomy.run_autonomous_expedition()
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["outcome"], "no_eligible_discovery")
+        self.assertIsNone(result["daily_discovery_public_id"])
+        self.assertEqual(result["model_calls_used"], 1)
+        score_mock.assert_not_called()
+        self.assertEqual(len(archive_store.list_research_runs()), 2)
+        self.assertEqual(archive_store.get_current_daily_discovery().research_run_public_id, prior.public_id)
+        run = archive_store.get_latest_autonomous_run()
+        self.assertEqual(run.outcome_code, "no_eligible_discovery")
+        self.assertIsNone(run.failure_stage)
 
     def test_starting_retrieval_failure_marks_run_failed(self):
         with patch.object(autonomy, "load_seed_pool", return_value=[self.seed]), patch.object(
@@ -357,7 +402,7 @@ class AutonomyTests(unittest.TestCase):
         self.assertIsNone(archive_store.get_current_daily_discovery())
 
     def test_scoring_failure_preserves_archive_and_prior_discovery(self):
-        prior = self.archive_record("Previously published")
+        prior = self.archive_record("Previously published", "https://prior.example/source")
         archive_store.publish_daily_discovery(
             research_public_id=prior.public_id, source_autonomous_run_id="AR-PRIOR",
             selection_reason="Prior reason.", selected_score=20,
@@ -369,7 +414,7 @@ class AutonomyTests(unittest.TestCase):
         self.assertEqual(archive_store.get_current_daily_discovery().research_run_public_id, prior.public_id)
 
     def test_publication_failure_preserves_previous_publication_and_scoring(self):
-        prior = self.archive_record("Previously published")
+        prior = self.archive_record("Previously published", "https://prior.example/source")
         archive_store.publish_daily_discovery(
             research_public_id=prior.public_id, source_autonomous_run_id="AR-PRIOR",
             selection_reason="Prior reason.", selected_score=20,

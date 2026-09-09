@@ -4,9 +4,9 @@ CyberSlooth is a planned public experiment in internet archaeology: autonomous r
 
 ## Prototype status
 
-Stage 1.0B prepares the tested autonomous expedition for one external Railway-scheduled invocation per day. The same orchestrator rotates through an application-owned seed pool, reuses the existing bounded research services, archives the result, evaluates recent discoveries, publishes one selected archive record, records sanitized run metadata, and stops.
+Stage 1.1 prepares the tested autonomous expedition for one external Railway-scheduled invocation per day and adds deterministic publication novelty. The same orchestrator rotates through an application-owned seed pool, reuses the existing bounded research services, archives every valid result, evaluates eligible recent discoveries, publishes at most one selected archive record, records sanitized run metadata, and stops.
 
-Stage 1.0B contains no application-level scheduler. Railway is the clock: each scheduled process invokes the existing CLI once, performs at most one expedition, and exits. The CLI and protected HTTP manual triggers remain available. CyberSlooth adds no cron library, background worker, queue, polling loop, recursive crawl, multi-hop research, or repeated expedition loop.
+Stage 1.1 contains no application-level scheduler. Railway is the clock: each scheduled process invokes the existing CLI once, performs at most one expedition, and exits. The CLI and protected HTTP manual triggers remain available. CyberSlooth adds no cron library, background worker, queue, polling loop, recursive crawl, multi-hop research, or repeated expedition loop.
 
 ## Run locally
 
@@ -47,13 +47,15 @@ The endpoint stores normalized excerpts and structured results only—never API 
 
 `POST /api/select-daily-candidate` accepts no browser-supplied records. The server loads only the ten most recent `ResearchRun` rows and requires at least two. It sends one compact, stored-data-only comparison to the OpenAI Responses API with tools disabled and strict structured output.
 
-Each record receives integer 0–5 scores for research value, evidence quality, novelty, interestingness, uncertainty penalty, and archive recommendation quality. The server ignores the model's arithmetic and recomputes:
+The model supplies integer 0–5 scores for research value, evidence quality, interestingness, uncertainty penalty, and archive recommendation quality. The server supplies novelty deterministically from the prior 30 days of Daily Discovery history and recomputes:
 
 `research value + evidence quality + novelty + interestingness + archive quality - uncertainty penalty`
 
 The possible total is -5 through 25. Ties are resolved by higher evidence quality, then higher research value, then newer archive order. IDs must exactly match the supplied public IDs, and every supplied record must be scored exactly once.
 
 Successful evaluation atomically stores each candidate's total, rank, evaluation time, and selected flag while clearing the prior selected flag. Provider, validation, or database failures leave the previous completed selection unchanged. The `/archive` page exposes the manual **Evaluate Recent Discoveries** action, winner, and ranked result; a selected record receives a `DAILY CANDIDATE` badge. This is selection metadata, not a publication record.
+
+Stage 1.1 preserves repeated research in the archive but makes a canonical source URL ineligible for publication for 30 days. A different URL on a hostname published within seven days receives novelty 0, one last published 8–30 days ago receives novelty 2, and an unseen hostname receives novelty 5. These checks are server-side, add no model call, and intentionally do not attempt fuzzy title or topic similarity. If every recent candidate is exact-source ineligible, the expedition completes with `no_eligible_discovery` and publishes nothing.
 
 ## Database configuration
 
@@ -105,7 +107,7 @@ No Railway variables, Postgres services, or other resources are created by this 
 
 Candidate selection uses at most one model call per manual request, considers at most ten records, uses no tools, and relies on the OpenAI client's zero-retry configuration. Stored page-derived text is explicitly treated as untrusted data in the scoring prompt. Raw excerpts, URLs, provider responses, secrets, internal database IDs, and hidden prompts are excluded from the scoring payload and selection metadata.
 
-## Stage 1.0B scheduled execution
+## Stage 1.1 scheduled execution
 
 `run_autonomous_expedition()` remains the single orchestration path used by the Railway CLI invocation and both manual triggers. It calls the existing Python services directly and never makes HTTP requests back into CyberSlooth's own API.
 
@@ -116,8 +118,8 @@ Each successful run:
 3. Retrieves the primary starting page using the existing safety controls. If that source has a retryable retrieval failure, it tries at most one different enabled seed from the same curated pool, then analyzes the first successfully retrieved starting page.
 4. Uses the existing one-hop exploration when the validated analysis contains candidate follow-ups; at most two pages may be selected.
 5. Validates and archives the completed research structure.
-6. Scores only the ten most recent archive records using the existing Stage 0.6 one-call evaluator.
-7. Publishes one `DailyDiscovery` that references the selected archived record.
+6. Filters exact-source repeats against a bounded 30-day publication history and deterministically assigns hostname novelty before the existing one-call evaluator scores the other factors.
+7. Publishes at most one `DailyDiscovery`; if no record remains eligible, it records `no_eligible_discovery` and completes successfully without a scoring call.
 8. Completes the run record and stops without starting another expedition.
 
 The starter seed pool is stored in `data/autonomy_seeds.json`. It contains five benign public archive or informational starting points and can be curated without changing orchestration code. Primary and alternate seed selection use no model call. The alternate must be a different enabled seed from this approved pool: arbitrary trigger-supplied or fallback URLs are never accepted.
@@ -151,4 +153,4 @@ The token is never included in CLI output, frontend JavaScript, API responses, p
 
 `AutonomousRun` stores the public run ID, timestamps, status, initial seed ID, final seed reference, seed-attempt count, archive/publication references, bounded counters, and safe failure metadata. Seed URLs remain excluded from public status. `DailyDiscovery` stores one unique publication per UTC date and references the full `ResearchRun` rather than duplicating it.
 
-Railway configuration is intentionally not created by this repository. Stage 1.0B only makes the existing short-lived execution path ready for Railway's external scheduler.
+Railway configuration is intentionally not created by this repository. Stage 1.1 keeps the existing short-lived execution path ready for Railway's external scheduler.

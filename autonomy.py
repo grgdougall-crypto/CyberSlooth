@@ -110,6 +110,9 @@ def select_seed(
 def public_run_view(run: Any) -> dict[str, Any]:
     """Return only sanitized autonomous-run metadata."""
 
+    outcome = run.outcome_code
+    if outcome is None and run.status == "completed" and run.daily_discovery_public_id:
+        outcome = "discovery_published"
     return {
         "public_run_id": run.public_run_id,
         "started_at": run.started_at.isoformat(),
@@ -119,6 +122,7 @@ def public_run_view(run: Any) -> dict[str, Any]:
         "daily_discovery_public_id": run.daily_discovery_public_id,
         "pages_retrieved": run.pages_retrieved,
         "model_calls_used": run.model_calls_used,
+        "outcome": outcome,
         "failure_stage": run.failure_stage,
         "failure_message": run.failure_message_safe,
     }
@@ -255,9 +259,27 @@ def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[s
         candidates = list_recent_research_runs(cyberslooth.MAX_DAILY_CANDIDATES)
         if len(candidates) < 2:
             raise AutonomyError("insufficient_archive", "At least two archived records are required for daily scoring.", 409)
-        model_calls_used += 1
-        ranked, selection_reason = cyberslooth.score_daily_candidates(candidates)
         evaluated_at = datetime.now(timezone.utc)
+        eligible, novelty_scores, excluded_ids = cyberslooth.prepare_daily_candidates(candidates, evaluated_at)
+        if not eligible:
+            persist_daily_candidate_evaluation([], evaluated_at)
+            completed = complete_autonomous_run(
+                public_run_id,
+                research_public_id=research_public_id,
+                daily_discovery_public_id=None,
+                pages_retrieved=pages_retrieved,
+                model_calls_used=model_calls_used,
+                outcome_code="no_eligible_discovery",
+            )
+            _transition(
+                log, public_run_id, "completed", outcome="no_eligible_discovery",
+                exact_source_exclusions=len(excluded_ids), pages_retrieved=pages_retrieved,
+                model_calls=model_calls_used, research_public_id=research_public_id,
+            )
+            return public_run_view(completed)
+
+        model_calls_used += 1
+        ranked, selection_reason = cyberslooth.score_daily_candidates(eligible, novelty_scores)
         persist_daily_candidate_evaluation(ranked, evaluated_at)
         winner = ranked[0]
         _transition(log, public_run_id, "scored", model_calls=model_calls_used)
@@ -278,6 +300,7 @@ def run_autonomous_expedition(*, logger: logging.Logger | None = None) -> dict[s
             daily_discovery_public_id=winner["public_id"],
             pages_retrieved=pages_retrieved,
             model_calls_used=model_calls_used,
+            outcome_code="discovery_published",
         )
         _transition(
             log, public_run_id, "completed", pages_retrieved=pages_retrieved,
