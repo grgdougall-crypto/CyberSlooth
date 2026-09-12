@@ -80,7 +80,7 @@ class AutonomyTests(unittest.TestCase):
         self.client = cyberslooth.app.test_client()
         self.seed = {
             "id": "seed-test", "url": "https://example.com/", "label": "Test seed",
-            "category": "test directory", "enabled": True,
+            "category": "archives", "enabled": True,
         }
         self.seed_a = {**self.seed, "id": "seed-a", "url": "https://example.com/a"}
         self.seed_b = {**self.seed, "id": "seed-b", "url": "https://example.com/b"}
@@ -174,7 +174,39 @@ class AutonomyTests(unittest.TestCase):
 
     def test_seed_pool_loads_enabled_seeds(self):
         seeds = autonomy.load_seed_pool()
-        self.assertGreaterEqual(len([seed for seed in seeds if seed["enabled"]]), 5)
+        self.assertEqual(len(seeds), 20)
+        self.assertEqual(len([seed for seed in seeds if seed["enabled"]]), 20)
+        self.assertEqual({seed["category"] for seed in seeds}, autonomy.SEED_CATEGORIES)
+
+    def write_seed_pool(self, seeds):
+        path = Path(self.temp.name) / "seeds.json"
+        path.write_text(json.dumps(seeds), encoding="utf-8")
+        return path
+
+    def test_unknown_seed_category_is_rejected(self):
+        path = self.write_seed_pool([{**self.seed, "category": "miscellaneous"}])
+        with self.assertRaises(autonomy.AutonomyError) as raised:
+            autonomy.load_seed_pool(path)
+        self.assertEqual(raised.exception.code, "seed_pool_invalid")
+
+    def test_duplicate_enabled_canonical_seed_url_is_rejected(self):
+        path = self.write_seed_pool([
+            {**self.seed, "id": "seed-a", "url": "HTTPS://WWW.Example.COM:443/path#one"},
+            {**self.seed, "id": "seed-b", "url": "https://example.com/path#two"},
+        ])
+        with self.assertRaises(autonomy.AutonomyError) as raised:
+            autonomy.load_seed_pool(path)
+        self.assertEqual(raised.exception.code, "seed_pool_invalid")
+
+    def test_hostname_normalization_is_deterministic(self):
+        self.assertEqual(
+            autonomy.normalize_seed_hostname("HTTPS://WWW.Example.COM.:443/path"),
+            "example.com",
+        )
+        self.assertEqual(
+            autonomy.canonicalize_seed_url("HTTPS://WWW.Example.COM:443/path#fragment"),
+            "https://example.com/path",
+        )
 
     def test_seed_selection_does_not_require_ai_call(self):
         with patch.object(cyberslooth, "create_openai_client") as create_client:
@@ -191,6 +223,124 @@ class AutonomyTests(unittest.TestCase):
             {**self.seed, "id": "seed-b"},
         ]
         self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_never_used_category_is_selected_first(self):
+        used_at = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        seeds = [
+            {**self.seed, "id": "seed-a", "category": "archives"},
+            {**self.seed, "id": "seed-b", "url": "https://history.example/", "category": "history-heritage"},
+        ]
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value={"seed-a": used_at}):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_oldest_category_is_selected_first(self):
+        now = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        seeds = [
+            {**self.seed, "id": "seed-a", "category": "archives"},
+            {**self.seed, "id": "seed-b", "url": "https://history.example/", "category": "history-heritage"},
+        ]
+        history = {"seed-a": now, "seed-b": now - timedelta(days=4)}
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value=history):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_oldest_hostname_is_selected_within_category(self):
+        now = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        seeds = [
+            {**self.seed, "id": "seed-a", "url": "https://recent.example/a"},
+            {**self.seed, "id": "seed-b", "url": "https://older.example/b"},
+        ]
+        history = {"seed-a": now, "seed-b": now - timedelta(days=4)}
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value=history):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_oldest_seed_is_selected_within_hostname(self):
+        now = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        seeds = [
+            {**self.seed, "id": "seed-a", "url": "https://example.com/a"},
+            {**self.seed, "id": "seed-b", "url": "https://www.example.com/b"},
+        ]
+        history = {"seed-a": now, "seed-b": now - timedelta(days=4)}
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value=history):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_seed_id_is_stable_final_tie_break(self):
+        seeds = [
+            {**self.seed, "id": "seed-b", "url": "https://example.com/b"},
+            {**self.seed, "id": "seed-a", "url": "https://example.com/a"},
+        ]
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value={}):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-a")
+
+    def test_failed_attempt_affects_category_hostname_and_seed_recency(self):
+        run = archive_store.create_autonomous_run()
+        archive_store.set_autonomous_run_seed(run.public_run_id, "seed-a", "https://example.com/a")
+        archive_store.fail_autonomous_run(
+            run.public_run_id, failure_stage="retrieval", failure_message_safe="Unavailable.",
+            pages_retrieved=0, model_calls_used=0,
+        )
+        seeds = [
+            {**self.seed, "id": "seed-a", "url": "https://example.com/a", "category": "archives"},
+            {**self.seed, "id": "seed-b", "url": "https://www.example.com/b", "category": "archives"},
+            {**self.seed, "id": "seed-c", "url": "https://other.example/c", "category": "archives"},
+            {**self.seed, "id": "seed-d", "url": "https://science.example/d", "category": "science-space"},
+        ]
+        self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-d")
+        self.assertEqual(autonomy.select_seed(seeds, excluded_ids={"seed-d"})["id"], "seed-c")
+        self.assertEqual(autonomy.select_seed(seeds, excluded_ids={"seed-c", "seed-d"})["id"], "seed-b")
+
+    def test_excluded_canonical_url_cannot_be_selected(self):
+        seeds = [
+            {**self.seed, "id": "seed-a", "url": "https://www.example.com/path#one"},
+            {**self.seed, "id": "seed-b", "url": "https://example.com/path#two"},
+            {**self.seed, "id": "seed-c", "url": "https://other.example/path"},
+        ]
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value={}):
+            selected = autonomy.select_seed(
+                seeds, excluded_ids={"seed-a"}, excluded_urls={"HTTPS://EXAMPLE.COM:443/path"},
+            )
+        self.assertEqual(selected["id"], "seed-c")
+
+    def test_disabled_seeds_are_ignored(self):
+        seeds = [
+            {**self.seed, "id": "seed-a", "enabled": False},
+            {**self.seed, "id": "seed-b", "url": "https://other.example/"},
+        ]
+        with patch.object(autonomy, "autonomous_seed_last_used", return_value={}):
+            self.assertEqual(autonomy.select_seed(seeds)["id"], "seed-b")
+
+    def test_repeated_selection_reaches_every_seed_without_starvation(self):
+        seeds = [
+            {**self.seed, "id": "seed-a1", "url": "https://a1.example/", "category": "archives"},
+            {**self.seed, "id": "seed-a2", "url": "https://a2.example/", "category": "archives"},
+            {**self.seed, "id": "seed-h1", "url": "https://h1.example/", "category": "history-heritage"},
+            {**self.seed, "id": "seed-h2", "url": "https://h2.example/", "category": "history-heritage"},
+            {**self.seed, "id": "seed-s1", "url": "https://s1.example/", "category": "science-space"},
+            {**self.seed, "id": "seed-s2", "url": "https://s2.example/", "category": "science-space"},
+        ]
+        history = {}
+        chosen = []
+        base = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        with patch.object(autonomy, "autonomous_seed_last_used", side_effect=lambda _ids: dict(history)):
+            for index in range(12):
+                selected = autonomy.select_seed(seeds)
+                chosen.append(selected["id"])
+                history[selected["id"]] = base + timedelta(days=index)
+        self.assertEqual(set(chosen), {seed["id"] for seed in seeds})
+        self.assertEqual({seed_id: chosen.count(seed_id) for seed_id in set(chosen)}, {
+            seed["id"]: 2 for seed in seeds
+        })
+
+    def test_every_configured_enabled_seed_is_reachable(self):
+        seeds = autonomy.load_seed_pool()
+        history = {}
+        chosen = []
+        base = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        with patch.object(autonomy, "autonomous_seed_last_used", side_effect=lambda _ids: dict(history)):
+            for index in range(len(seeds) * 2):
+                selected = autonomy.select_seed(seeds)
+                chosen.append(selected["id"])
+                history[selected["id"]] = base + timedelta(days=index)
+        self.assertEqual(set(chosen), {seed["id"] for seed in seeds if seed["enabled"]})
 
     def test_no_enabled_seeds_fails_safely(self):
         with self.assertRaises(autonomy.AutonomyError) as raised:

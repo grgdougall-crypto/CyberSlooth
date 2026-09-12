@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import app as cyberslooth
 from archive_store import (
@@ -28,6 +29,19 @@ SEED_POOL_PATH = Path(__file__).resolve().parent / "data" / "autonomy_seeds.json
 MAX_SEED_FILE_BYTES = 32 * 1024
 MAX_STARTING_SEED_ATTEMPTS = 2
 MAX_AUTONOMOUS_MODEL_CALLS = 6
+SEED_CATEGORIES = frozenset({
+    "archives",
+    "history-heritage",
+    "museums-culture",
+    "language-literature",
+    "science-space",
+    "health-medicine",
+    "environment-earth",
+    "geography-maps",
+    "open-data",
+    "technology-computing",
+    "infrastructure-engineering",
+})
 RETRYABLE_SEED_RETRIEVAL_CODES = frozenset({
     "dns_failed", "source_status", "source_timeout", "source_unavailable", "retrieval_failed",
 })
@@ -41,6 +55,35 @@ class AutonomyError(Exception):
         self.code = code
         self.message = message
         self.status = status
+
+
+def normalize_seed_hostname(value: str) -> str:
+    """Return the deterministic hostname key used by curated-seed rotation."""
+
+    validated = cyberslooth.validate_public_url(value, resolve=False)
+    hostname = (urlsplit(validated).hostname or "").lower().rstrip(".")
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname
+
+
+def canonicalize_seed_url(value: str) -> str:
+    """Return a conservative canonical URL for configured-seed comparisons."""
+
+    validated = cyberslooth.validate_public_url(value, resolve=False)
+    parsed = urlsplit(validated)
+    scheme = parsed.scheme.lower()
+    hostname = normalize_seed_hostname(validated)
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
+    port = parsed.port
+    if port is not None and not (
+        (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+    ):
+        netloc = f"{hostname}:{port}"
+    else:
+        netloc = hostname
+    return urlunsplit((scheme, netloc, parsed.path or "/", parsed.query, ""))
 
 
 def load_seed_pool(path: Path | None = None) -> list[dict[str, Any]]:
@@ -70,7 +113,7 @@ def load_seed_pool(path: Path | None = None) -> list[dict[str, Any]]:
             raise AutonomyError("seed_pool_invalid", "The autonomous seed pool is invalid.", 500)
         if not isinstance(item.get("label"), str) or not item["label"].strip() or len(item["label"]) > 120:
             raise AutonomyError("seed_pool_invalid", "The autonomous seed pool is invalid.", 500)
-        if not isinstance(item.get("category"), str) or not item["category"].strip() or len(item["category"]) > 80:
+        if not isinstance(item.get("category"), str) or item["category"] not in SEED_CATEGORIES:
             raise AutonomyError("seed_pool_invalid", "The autonomous seed pool is invalid.", 500)
         if not isinstance(item.get("enabled"), bool):
             raise AutonomyError("seed_pool_invalid", "The autonomous seed pool is invalid.", 500)
@@ -80,6 +123,15 @@ def load_seed_pool(path: Path | None = None) -> list[dict[str, Any]]:
             raise AutonomyError("seed_pool_invalid", "The autonomous seed pool contains an invalid public URL.", 500) from exc
         seen.add(seed_id)
         seeds.append({**item, "url": url, "label": item["label"].strip(), "category": item["category"].strip()})
+
+    enabled_urls: set[str] = set()
+    for seed in seeds:
+        if not seed["enabled"]:
+            continue
+        canonical_url = canonicalize_seed_url(seed["url"])
+        if canonical_url in enabled_urls:
+            raise AutonomyError("seed_pool_invalid", "The autonomous seed pool contains a duplicate enabled URL.", 500)
+        enabled_urls.add(canonical_url)
     return seeds
 
 
@@ -87,24 +139,53 @@ def select_seed(
     seeds: list[dict[str, Any]], *, excluded_ids: set[str] | None = None,
     excluded_urls: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Choose the least-recently-used enabled seed, then stable ID order."""
+    """Choose by category, hostname, and seed recency, then stable ID order."""
 
     blocked_ids = excluded_ids or set()
-    blocked_urls = excluded_urls or set()
-    enabled = sorted(
-        (
-            seed for seed in seeds
-            if seed["enabled"] and seed["id"] not in blocked_ids and seed["url"] not in blocked_urls
-        ),
-        key=lambda seed: seed["id"],
-    )
+    blocked_urls = {canonicalize_seed_url(url) for url in (excluded_urls or set())}
+    configured = sorted(seeds, key=lambda seed: seed["id"])
+    enabled = [
+        seed for seed in configured
+        if seed["enabled"]
+        and seed["id"] not in blocked_ids
+        and canonicalize_seed_url(seed["url"]) not in blocked_urls
+    ]
     if not enabled:
         raise AutonomyError("no_enabled_seeds", "No autonomous starting seeds are enabled.", 409)
-    last_used = autonomous_seed_last_used([seed["id"] for seed in enabled])
-    never_used = [seed for seed in enabled if seed["id"] not in last_used]
-    if never_used:
-        return never_used[0]
-    return min(enabled, key=lambda seed: (last_used[seed["id"]], seed["id"]))
+
+    last_used = autonomous_seed_last_used([seed["id"] for seed in configured])
+
+    def used_value(value: datetime) -> float:
+        normalized = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return normalized.astimezone(timezone.utc).timestamp()
+
+    seed_last_used = {
+        seed_id: used_value(used_at)
+        for seed_id, used_at in last_used.items()
+    }
+    category_last_used: dict[str, float] = {}
+    hostname_last_used: dict[str, float] = {}
+    for seed in configured:
+        used_at = seed_last_used.get(seed["id"])
+        if used_at is None:
+            continue
+        category = seed["category"]
+        hostname = normalize_seed_hostname(seed["url"])
+        category_last_used[category] = max(category_last_used.get(category, used_at), used_at)
+        hostname_last_used[hostname] = max(hostname_last_used.get(hostname, used_at), used_at)
+
+    def recency_key(last_used_at: float | None) -> tuple[int, float]:
+        return (0, 0.0) if last_used_at is None else (1, last_used_at)
+
+    return min(
+        enabled,
+        key=lambda seed: (
+            recency_key(category_last_used.get(seed["category"])),
+            recency_key(hostname_last_used.get(normalize_seed_hostname(seed["url"]))),
+            recency_key(seed_last_used.get(seed["id"])),
+            seed["id"],
+        ),
+    )
 
 
 def public_run_view(run: Any) -> dict[str, Any]:

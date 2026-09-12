@@ -1,37 +1,142 @@
 [
   {
     "id": "seed-001",
-    "url": "https://www.loc.gov/collections/",
-    "label": "Library of Congress Collections",
-    "category": "public archive directory",
+    "url": "https://www.loc.gov/discover/",
+    "label": "Library of Congress Discover",
+    "category": "archives",
     "enabled": true
   },
   {
     "id": "seed-002",
     "url": "https://archive.org/details/texts",
     "label": "Internet Archive Texts",
-    "category": "public digital library",
+    "category": "archives",
     "enabled": true
   },
   {
     "id": "seed-003",
-    "url": "https://www.si.edu/explore",
-    "label": "Smithsonian Explore",
-    "category": "public informational hub",
+    "url": "https://airandspace.si.edu/explore",
+    "label": "National Air and Space Museum Explore",
+    "category": "museums-culture",
     "enabled": true
   },
   {
     "id": "seed-004",
     "url": "https://www.gutenberg.org/",
     "label": "Project Gutenberg",
-    "category": "public-domain library",
+    "category": "language-literature",
     "enabled": true
   },
   {
     "id": "seed-005",
     "url": "https://www.nasa.gov/history/",
     "label": "NASA History",
-    "category": "public history hub",
+    "category": "science-space",
+    "enabled": true
+  },
+  {
+    "id": "seed-006",
+    "url": "https://www.archives.gov/research",
+    "label": "National Archives Research",
+    "category": "history-heritage",
+    "enabled": true
+  },
+  {
+    "id": "seed-007",
+    "url": "https://www.nps.gov/learnandexplore/subjects.htm",
+    "label": "National Park Service Subjects",
+    "category": "history-heritage",
+    "enabled": true
+  },
+  {
+    "id": "seed-008",
+    "url": "https://www.vam.ac.uk/collections",
+    "label": "V&A Collections",
+    "category": "museums-culture",
+    "enabled": true
+  },
+  {
+    "id": "seed-009",
+    "url": "https://standardebooks.org/ebooks",
+    "label": "Standard Ebooks",
+    "category": "language-literature",
+    "enabled": true
+  },
+  {
+    "id": "seed-010",
+    "url": "https://www.nsf.gov/science-matters",
+    "label": "NSF Science Matters",
+    "category": "science-space",
+    "enabled": true
+  },
+  {
+    "id": "seed-011",
+    "url": "https://www.who.int/news-room/fact-sheets",
+    "label": "WHO Fact Sheets",
+    "category": "health-medicine",
+    "enabled": true
+  },
+  {
+    "id": "seed-012",
+    "url": "https://www.epa.gov/environmental-topics",
+    "label": "EPA Environmental Topics",
+    "category": "environment-earth",
+    "enabled": true
+  },
+  {
+    "id": "seed-013",
+    "url": "https://www.usgs.gov/science/science-explorer",
+    "label": "USGS Science Explorer",
+    "category": "environment-earth",
+    "enabled": true
+  },
+  {
+    "id": "seed-014",
+    "url": "https://oceanservice.noaa.gov/facts/",
+    "label": "NOAA Ocean Facts",
+    "category": "environment-earth",
+    "enabled": true
+  },
+  {
+    "id": "seed-015",
+    "url": "https://www.census.gov/data.html",
+    "label": "Census Data and Maps",
+    "category": "geography-maps",
+    "enabled": true
+  },
+  {
+    "id": "seed-016",
+    "url": "https://data.gov/index.html",
+    "label": "Data.gov",
+    "category": "open-data",
+    "enabled": true
+  },
+  {
+    "id": "seed-017",
+    "url": "https://fred.stlouisfed.org/categories",
+    "label": "FRED Categories",
+    "category": "open-data",
+    "enabled": true
+  },
+  {
+    "id": "seed-018",
+    "url": "https://www.nist.gov/topics",
+    "label": "NIST Topics",
+    "category": "technology-computing",
+    "enabled": true
+  },
+  {
+    "id": "seed-019",
+    "url": "https://computerhistory.org/collections/",
+    "label": "Computer History Museum Collections",
+    "category": "technology-computing",
+    "enabled": true
+  },
+  {
+    "id": "seed-020",
+    "url": "https://www.energy.gov/topics/energy-sources",
+    "label": "DOE Energy Sources",
+    "category": "infrastructure-engineering",
     "enabled": true
   }
 ]

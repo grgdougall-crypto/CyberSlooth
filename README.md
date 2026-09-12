@@ -114,7 +114,7 @@ Candidate selection uses at most one model call per manual request, considers at
 Each successful run:
 
 1. Creates an `AutonomousRun` in `running` state and acquires the database-backed active-run guard.
-2. Selects one primary enabled seed deterministically using least-recently-used order with stable seed-ID tie-breaking.
+2. Selects one primary enabled seed deterministically by least-recently-used category, hostname, and seed, with stable seed-ID tie-breaking.
 3. Retrieves the primary starting page using the existing safety controls. If that source has a retryable retrieval failure, it tries at most one different enabled seed from the same curated pool, then analyzes the first successfully retrieved starting page.
 4. Uses the existing one-hop exploration when the validated analysis contains candidate follow-ups; at most two pages may be selected.
 5. Validates and archives the completed research structure.
@@ -122,7 +122,9 @@ Each successful run:
 7. Publishes at most one `DailyDiscovery`; if no record remains eligible, it records `no_eligible_discovery` and completes successfully without a scoring call.
 8. Completes the run record and stops without starting another expedition.
 
-The starter seed pool is stored in `data/autonomy_seeds.json`. It contains five benign public archive or informational starting points and can be curated without changing orchestration code. Primary and alternate seed selection use no model call. The alternate must be a different enabled seed from this approved pool: arbitrary trigger-supplied or fallback URLs are never accepted.
+The starter seed pool is stored in `data/autonomy_seeds.json`. It contains twenty enabled, preflighted institutional or public-information starting points across a fixed eleven-category taxonomy. Selection orders never-used groups first, then least-recently-used category, normalized hostname, and individual seed, followed by stable seed ID. Failed retrieval attempts count as use because each approved attempt is persisted before retrieval. Primary and alternate selection use no model call. The alternate must be a different enabled seed and canonical URL from this approved pool: arbitrary trigger-supplied or fallback URLs are never accepted.
+
+Source diversity affects only which curated source initiates research. Every valid result remains archived, and the separate Stage 1.1 exact-source cooldown and deterministic publication-domain novelty rules remain unchanged.
 
 An autonomous run may use at most six model calls: one starting analysis, up to four existing exploration calls, and one cross-run scoring call. Starting-source retrieval is limited to one primary curated seed plus at most one alternate curated seed, for a maximum of two starting-seed retrieval attempts. After one starting page succeeds, retrieval remains limited to at most two follow-up pages. Existing clients use zero automatic retries.
 
